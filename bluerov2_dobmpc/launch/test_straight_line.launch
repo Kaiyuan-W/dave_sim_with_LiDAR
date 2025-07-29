@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<launch>
+    <!-- Test launch file for straight line navigation -->
+    
+    <!-- Start the main DOB-MPC controller -->
+    <include file="$(find bluerov2_dobmpc)/launch/dob_copy.launch"/>
+    
+    <!-- Start keyboard input node -->
+    <node pkg="bluerov2_dobmpc" type="keyboard_input.py" name="keyboard_input" output="screen" />
+    
+    <!-- Start RViz for visualization -->
+    <node name="rviz" pkg="rviz" type="rviz" output="screen" args="-d $(find bluerov2_control)/rviz/bluerov2_control.rviz"/>
+    
+    <!-- Print instructions -->
+    <node pkg="rostopic" type="rostopic" name="print_instructions" args="pub /keyboard_input std_msgs/String 'h'" output="screen">
+        <param name="rate" value="1"/>
+    </node>
+    
+</launch> 
