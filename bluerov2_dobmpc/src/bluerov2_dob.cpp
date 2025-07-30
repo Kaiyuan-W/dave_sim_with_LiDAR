@@ -100,6 +100,7 @@ BLUEROV2_DOB::BLUEROV2_DOB(ros::NodeHandle& nh)
     esti_pose_pub = nh.advertise<nav_msgs::Odometry>("/bluerov2/ekf/pose",20);
     esti_disturbance_pub = nh.advertise<nav_msgs::Odometry>("/bluerov2/ekf/disturbance",20);
     applied_disturbance_pub = nh.advertise<nav_msgs::Odometry>("/bluerov2/applied_disturbance",20);
+    trajectory_pub = nh.advertise<nav_msgs::Path>("/bluerov2/trajectory", 10);
     subscribers.resize(6);
     for (int i = 0; i < 6; i++)
     {
@@ -136,6 +137,10 @@ BLUEROV2_DOB::BLUEROV2_DOB(ros::NodeHandle& nh)
     fault_detection.last_dvl_time = ros::Time::now();
     fault_detection.last_pressure_time = ros::Time::now();
     fault_detection.last_lidar_time = ros::Time::now();
+    
+    // Initialize trajectory visualization
+    trajectory_path.header.frame_id = "odom_frame";
+    trajectory_path.header.stamp = ros::Time::now();
 
     // initialize
     for(unsigned int i=0; i < BLUEROV2_NU; i++) acados_out.u0[i] = 0.0;
@@ -200,6 +205,9 @@ void BLUEROV2_DOB::pose_cb(const nav_msgs::Odometry::ConstPtr& pose)
     compensate_f_inertial << 20,0,0;
     compensate_f_body = R_ib.inverse()*compensate_f_inertial;
 
+    // Update trajectory visualization
+    update_trajectory();
+    publish_trajectory();
 
     }
 
@@ -827,6 +835,40 @@ void BLUEROV2_DOB::UKF() {
     applied_disturbance.header.frame_id = "odom_frame";
     applied_disturbance.child_frame_id = "base_link";
     applied_disturbance_pub.publish(applied_disturbance);
+}
+
+// Trajectory visualization functions
+void BLUEROV2_DOB::update_trajectory() {
+    // Create a new pose stamped message
+    geometry_msgs::PoseStamped pose_stamped;
+    pose_stamped.header.frame_id = "odom_frame";
+    pose_stamped.header.stamp = ros::Time::now();
+    
+    // Set position
+    pose_stamped.pose.position.x = local_pos.x;
+    pose_stamped.pose.position.y = local_pos.y;
+    pose_stamped.pose.position.z = local_pos.z;
+    
+    // Set orientation
+    pose_stamped.pose.orientation = tf::createQuaternionMsgFromRollPitchYaw(
+        local_euler.phi, local_euler.theta, local_euler.psi);
+    
+    // Add to trajectory points
+    trajectory_points.push_back(pose_stamped);
+    
+    // Limit the number of points to prevent memory issues
+    if (trajectory_points.size() > max_trajectory_points) {
+        trajectory_points.erase(trajectory_points.begin());
+    }
+}
+
+void BLUEROV2_DOB::publish_trajectory() {
+    // Update trajectory path
+    trajectory_path.header.stamp = ros::Time::now();
+    trajectory_path.poses = trajectory_points;
+    
+    // Publish trajectory
+    trajectory_pub.publish(trajectory_path);
 }
 
 // Define function to compute Jacobian of system dynamics at current state and input

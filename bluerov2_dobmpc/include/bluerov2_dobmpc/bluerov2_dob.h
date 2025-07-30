@@ -24,6 +24,7 @@
 #include <sensor_msgs/FluidPressure.h>
 #include <sensor_msgs/LaserScan.h>
 #include <std_msgs/String.h>
+#include <nav_msgs/Path.h>
 #include <iostream>
 #include <fstream>
 #include <cmath>
@@ -264,6 +265,11 @@ class BLUEROV2_DOB{
     double right_lidar_distance = 0.0;
     double forward_lidar_distance = 0.0;
     
+    // Trajectory visualization
+    nav_msgs::Path trajectory_path;
+    std::vector<geometry_msgs::PoseStamped> trajectory_points;
+    int max_trajectory_points = 1000;  // Maximum number of points to store
+    
     // Acados parameter
     std::string REF_TRAJ;
     std::string WRENCH_FX;
@@ -318,6 +324,7 @@ class BLUEROV2_DOB{
     ros::Publisher esti_pose_pub;
     ros::Publisher esti_disturbance_pub;
     ros::Publisher applied_disturbance_pub;
+    ros::Publisher trajectory_pub;
     ros::Subscriber imu_sub;
     ros::ServiceClient client;
     ros::Subscriber pressure_sub;
@@ -399,6 +406,10 @@ class BLUEROV2_DOB{
     void keyboard_cb(const std_msgs::String::ConstPtr& msg);
     void start_straight_line_navigation();
     void stop_straight_line_navigation();
+    
+    // Trajectory visualization functions
+    void update_trajectory();
+    void publish_trajectory();
     
     // UKF specific functions
     void initialize_ukf();
