@@ -120,15 +120,6 @@ BLUEROV2_DOB::BLUEROV2_DOB(ros::NodeHandle& nh)
     keyboard_sub = nh.subscribe<std_msgs::String>("/keyboard_input", 10, &BLUEROV2_DOB::keyboard_cb, this);
     pcl_sub = nh.subscribe("/camera/depth/color/points", 20, &BLUEROV2_DOB::pcl_cb, this);
     
-    // Initialize fault detection timers
-    fault_detection.last_imu_time = ros::Time::now();
-    fault_detection.last_dvl_time = ros::Time::now();
-    fault_detection.last_pressure_time = ros::Time::now();
-    fault_detection.last_lidar_time = ros::Time::now();
-    
-    // Keyboard control subscriber
-    keyboard_sub = nh.subscribe<std_msgs::String>("/keyboard_input", 10, &BLUEROV2_DOB::keyboard_cb, this);
-
     // Initialize UKF
     initialize_ukf();
     
