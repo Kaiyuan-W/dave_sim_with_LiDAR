@@ -57,7 +57,7 @@
     <origin xyz="0 0.15 0" rpy="0 0 1.5708"/>
     <visual>
       <geometry>
-        <mesh filename="https://app.gazebosim.org/OpenRobotics/fuel/models/Lidar%202d%20v1" scale="1 1 1"/>
+        <mesh filename="file://$(find bluerov2_description)/meshes/lidar.dae" scale="1 1 1"/>
       </geometry>
     </visual>
   </xacro:bluerov2_sss>
@@ -80,7 +80,7 @@
     <origin xyz="0 -0.15 0" rpy="0 0 -1.5708"/>
     <visual>
       <geometry>
-        <mesh filename="https://app.gazebosim.org/OpenRobotics/fuel/models/Lidar%202d%20v1" scale="1 1 1"/>
+        <mesh filename="file://$(find bluerov2_description)/meshes/lidar.dae" scale="1 1 1"/>
       </geometry>
     </visual>
   </xacro:bluerov2_sss>
@@ -103,7 +103,7 @@
     <origin xyz="0.2 0 0" rpy="0 0 0"/>
     <visual>
       <geometry>
-        <mesh filename="https://app.gazebosim.org/OpenRobotics/fuel/models/Lidar%202d%20v1" scale="1 1 1"/>
+        <mesh filename="file://$(find bluerov2_description)/meshes/lidar.dae" scale="1 1 1"/>
       </geometry>
     </visual>
   </xacro:bluerov2_sss>

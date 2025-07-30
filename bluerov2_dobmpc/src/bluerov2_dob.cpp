@@ -63,6 +63,9 @@ BLUEROV2_DOB::BLUEROV2_DOB(ros::NodeHandle& nh)
     
     esti_x << 0,0,-20,0,0,0,0,0,0,0,0,0,6,6,6,0,0,0;
     esti_P = P0;
+    
+    // Initialize UKF
+    initialize_ukf();
 
     // Initialize body wrench force
     applied_wrench.fx = 0.0;
@@ -98,12 +101,21 @@ BLUEROV2_DOB::BLUEROV2_DOB(ros::NodeHandle& nh)
     client = nh.serviceClient<gazebo_msgs::ApplyBodyWrench>("/gazebo/apply_body_wrench");
     imu_sub = nh.subscribe<sensor_msgs::Imu>("/bluerov2/imu", 20, &BLUEROV2_DOB::imu_cb, this);
     pressure_sub = nh.subscribe<sensor_msgs::FluidPressure>("/bluerov2/pressure", 20, &BLUEROV2_DOB::pressure_cb, this);
+    
+    // Initialize LiDAR subscribers
+    left_lidar_sub = nh.subscribe<sensor_msgs::LaserScan>("/bluerov2/left_lidar_/scan", 20, &BLUEROV2_DOB::left_lidar_cb, this);
+    right_lidar_sub = nh.subscribe<sensor_msgs::LaserScan>("/bluerov2/right_lidar_/scan", 20, &BLUEROV2_DOB::right_lidar_cb, this);
+    forward_lidar_sub = nh.subscribe<sensor_msgs::LaserScan>("/bluerov2/forward_lidar_/scan", 20, &BLUEROV2_DOB::forward_lidar_cb, this);
+    
+    // Initialize keyboard subscriber
+    keyboard_sub = nh.subscribe<std_msgs::String>("/keyboard_input", 10, &BLUEROV2_DOB::keyboard_cb, this);
     pcl_sub = nh.subscribe("/camera/depth/color/points", 20, &BLUEROV2_DOB::pcl_cb, this);
-
-    // LiDAR subscribers
-    left_lidar_sub = nh.subscribe<sensor_msgs::LaserScan>("/bluerov2/left_lidar_scan", 20, &BLUEROV2_DOB::left_lidar_cb, this);
-    right_lidar_sub = nh.subscribe<sensor_msgs::LaserScan>("/bluerov2/right_lidar_scan", 20, &BLUEROV2_DOB::right_lidar_cb, this);
-    forward_lidar_sub = nh.subscribe<sensor_msgs::LaserScan>("/bluerov2/forward_lidar_scan", 20, &BLUEROV2_DOB::forward_lidar_cb, this);
+    
+    // Initialize fault detection timers
+    fault_detection.last_imu_time = ros::Time::now();
+    fault_detection.last_dvl_time = ros::Time::now();
+    fault_detection.last_pressure_time = ros::Time::now();
+    fault_detection.last_lidar_time = ros::Time::now();
     
     // Keyboard control subscriber
     keyboard_sub = nh.subscribe<std_msgs::String>("/keyboard_input", 10, &BLUEROV2_DOB::keyboard_cb, this);
