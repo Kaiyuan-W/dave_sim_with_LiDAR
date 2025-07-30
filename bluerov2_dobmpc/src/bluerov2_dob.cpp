@@ -1148,6 +1148,12 @@ void BLUEROV2_DOB::forward_lidar_cb(const sensor_msgs::LaserScan::ConstPtr& scan
 void BLUEROV2_DOB::straight_line_navigation() {
     if (!straight_line_mode) return;
     
+    // Check if we have received pose data
+    if (!is_start) {
+        ROS_WARN("No pose data received yet, cannot perform navigation");
+        return;
+    }
+    
     ROS_INFO("Straight line navigation active - Position: x=%.2f, y=%.2f, z=%.2f", 
              local_pos.x, local_pos.y, local_pos.z);
     
@@ -1213,10 +1219,10 @@ void BLUEROV2_DOB::path_correction() {
 }
 
 void BLUEROV2_DOB::generate_straight_line_trajectory() {
-    // Get current position
-    double current_x = esti_x(0);
-    double current_y = esti_x(1);
-    double current_z = esti_x(2);
+    // Use current pose instead of estimated pose for safety
+    double current_x = local_pos.x;
+    double current_y = local_pos.y;
+    double current_z = local_pos.z;
     
     // Calculate target position (move forward along x-axis)
     double target_x = current_x + 10.0;  // Move 10 meters forward
@@ -1335,6 +1341,13 @@ void BLUEROV2_DOB::keyboard_cb(const std_msgs::String::ConstPtr& msg) {
 void BLUEROV2_DOB::start_straight_line_navigation() {
     straight_line_mode = true;
     ROS_INFO("Starting straight line navigation");
+    
+    // Check if we have received pose data
+    if (!is_start) {
+        ROS_WARN("No pose data received yet, cannot start navigation");
+        return;
+    }
+    
     ROS_INFO("Current position: x=%.2f, y=%.2f, z=%.2f", local_pos.x, local_pos.y, local_pos.z);
     
     // Set initial target position
