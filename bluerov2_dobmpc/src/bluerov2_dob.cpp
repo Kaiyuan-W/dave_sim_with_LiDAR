@@ -134,7 +134,6 @@ BLUEROV2_DOB::BLUEROV2_DOB(ros::NodeHandle& nh)
     
     // Initialize fault detection timers
     fault_detection.last_imu_time = ros::Time::now();
-    fault_detection.last_dvl_time = ros::Time::now();
     fault_detection.last_pressure_time = ros::Time::now();
     fault_detection.last_lidar_time = ros::Time::now();
     
@@ -766,7 +765,7 @@ void BLUEROV2_DOB::UKF() {
     MatrixXd Pyy = compute_covariance_from_sigma_points(sigma_points_measurement, y_pred) + noise_R;
     
     // Compute cross-covariance
-    MatrixXd Pxy = MatrixXd::Zero(L, m);
+    MatrixXd Pxy = MatrixXd::Zero(L, 18);
     for (int i = 0; i < num_sigma_points; i++) {
         MatrixXd diff_x = sigma_points_transformed.col(i) - x_pred;
         MatrixXd diff_y = sigma_points_measurement.col(i) - y_pred;
@@ -850,8 +849,7 @@ void BLUEROV2_DOB::update_trajectory() {
     pose_stamped.pose.position.z = local_pos.z;
     
     // Set orientation
-    pose_stamped.pose.orientation = tf::createQuaternionMsgFromRollPitchYaw(
-        local_euler.phi, local_euler.theta, local_euler.psi);
+    pose_stamped.pose.orientation = rpy2q(local_euler);
     
     // Add to trajectory points
     trajectory_points.push_back(pose_stamped);
@@ -1232,24 +1230,22 @@ void BLUEROV2_DOB::update_sensor_weights() {
     // Adjust weights based on sensor health
     if (!fault_detection.imu_healthy) {
         sensor_weights.imu_weight = 0.0;
-        sensor_weights.dvl_weight += 0.1;
         sensor_weights.pressure_weight += 0.1;
+        sensor_weights.lidar_weight += 0.1;
     }
     
     if (!fault_detection.lidar_healthy) {
         sensor_weights.lidar_weight = 0.0;
-        sensor_weights.dvl_weight += 0.1;
         sensor_weights.pressure_weight += 0.1;
     }
     
     // Normalize weights
-    double total_weight = sensor_weights.imu_weight + sensor_weights.dvl_weight + 
+    double total_weight = sensor_weights.imu_weight + 
                          sensor_weights.pressure_weight + sensor_weights.gps_weight + 
                          sensor_weights.lidar_weight;
     
     if (total_weight > 0) {
         sensor_weights.imu_weight /= total_weight;
-        sensor_weights.dvl_weight /= total_weight;
         sensor_weights.pressure_weight /= total_weight;
         sensor_weights.gps_weight /= total_weight;
         sensor_weights.lidar_weight /= total_weight;
@@ -1291,7 +1287,6 @@ void BLUEROV2_DOB::update_sensor_timeouts() {
     ros::Time current_time = ros::Time::now();
     
     fault_detection.imu_timeout = (current_time - fault_detection.last_imu_time).toSec();
-    fault_detection.dvl_timeout = (current_time - fault_detection.last_dvl_time).toSec();
     fault_detection.pressure_timeout = (current_time - fault_detection.last_pressure_time).toSec();
     fault_detection.lidar_timeout = (current_time - fault_detection.last_lidar_time).toSec();
 }

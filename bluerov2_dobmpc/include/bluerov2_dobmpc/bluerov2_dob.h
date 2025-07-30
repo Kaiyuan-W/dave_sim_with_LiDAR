@@ -154,7 +154,7 @@ class BLUEROV2_DOB{
     Matrix<double,18,18> esti_P;    // estimate covariance
     Matrix<double,1,18> Q_cov;      // process noise value
     Matrix<double,18,18> noise_Q;   // process noise matrix
-    MatrixXd noise_R = MatrixXd::Identity(m, m)*(pow(dt,4)/4); // measurement noise matrix
+    MatrixXd noise_R = MatrixXd::Identity(18, 18)*(pow(dt,4)/4); // measurement noise matrix
     
     // UKF specific parameters
     double alpha = 0.001;  // UKF scaling parameter
@@ -229,10 +229,9 @@ class BLUEROV2_DOB{
     
     // Sensor fusion weights
     struct SensorWeights {
-        double imu_weight = 0.3;
-        double dvl_weight = 0.25;
-        double pressure_weight = 0.15;
-        double gps_weight = 0.1;
+        double imu_weight = 0.4;
+        double pressure_weight = 0.25;
+        double gps_weight = 0.15;
         double lidar_weight = 0.2;
     } sensor_weights;
     
@@ -247,15 +246,12 @@ class BLUEROV2_DOB{
     // Fault detection parameters
     struct FaultDetection {
         double imu_timeout = 0.0;
-        double dvl_timeout = 0.0;
         double pressure_timeout = 0.0;
         double lidar_timeout = 0.0;
         bool imu_healthy = true;
-        bool dvl_healthy = true;
         bool pressure_healthy = true;
         bool lidar_healthy = true;
         ros::Time last_imu_time;
-        ros::Time last_dvl_time;
         ros::Time last_pressure_time;
         ros::Time last_lidar_time;
     } fault_detection;
