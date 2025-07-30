@@ -866,6 +866,14 @@ void BLUEROV2_DOB::update_trajectory() {
     if (trajectory_points.size() > max_trajectory_points) {
         trajectory_points.erase(trajectory_points.begin());
     }
+    
+    // Debug: Print trajectory info every 100 points
+    static int debug_counter = 0;
+    debug_counter++;
+    if (debug_counter % 100 == 0) {
+        ROS_INFO("Trajectory points: %zu, Current position: (%.2f, %.2f, %.2f)", 
+                 trajectory_points.size(), local_pos.x, local_pos.y, local_pos.z);
+    }
 }
 
 void BLUEROV2_DOB::publish_trajectory() {
@@ -1140,6 +1148,9 @@ void BLUEROV2_DOB::forward_lidar_cb(const sensor_msgs::LaserScan::ConstPtr& scan
 void BLUEROV2_DOB::straight_line_navigation() {
     if (!straight_line_mode) return;
     
+    ROS_INFO("Straight line navigation active - Position: x=%.2f, y=%.2f, z=%.2f", 
+             local_pos.x, local_pos.y, local_pos.z);
+    
     // Update sensor timeouts
     update_sensor_timeouts();
     
@@ -1313,6 +1324,7 @@ void BLUEROV2_DOB::handle_sensor_faults() {
 
 // Keyboard control functions
 void BLUEROV2_DOB::keyboard_cb(const std_msgs::String::ConstPtr& msg) {
+    ROS_INFO("Received keyboard input: %s", msg->data.c_str());
     if (msg->data == "s" || msg->data == "S") {
         start_straight_line_navigation();
     } else if (msg->data == "e" || msg->data == "E") {
@@ -1323,11 +1335,14 @@ void BLUEROV2_DOB::keyboard_cb(const std_msgs::String::ConstPtr& msg) {
 void BLUEROV2_DOB::start_straight_line_navigation() {
     straight_line_mode = true;
     ROS_INFO("Starting straight line navigation");
+    ROS_INFO("Current position: x=%.2f, y=%.2f, z=%.2f", local_pos.x, local_pos.y, local_pos.z);
     
     // Set initial target position
     target_side_distance = 5.0;  // 5 meters from side wall
     target_depth = local_pos.z;  // Maintain current depth
     target_surge_velocity = 0.5; // 0.5 m/s forward velocity
+    
+    ROS_INFO("Target depth: %.2f, Target velocity: %.2f", target_depth, target_surge_velocity);
 }
 
 void BLUEROV2_DOB::stop_straight_line_navigation() {
