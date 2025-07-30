@@ -675,7 +675,14 @@ void BLUEROV2_DOB::initialize_ukf() {
 // Generate sigma points
 MatrixXd BLUEROV2_DOB::generate_sigma_points(MatrixXd x, MatrixXd P) {
     MatrixXd sigma_points(L, num_sigma_points);
-    MatrixXd sqrt_P = P.llt().matrixL();
+    
+    // Add small positive values to diagonal to ensure positive definiteness
+    MatrixXd P_safe = P;
+    for (int i = 0; i < P.rows(); i++) {
+        P_safe(i, i) = std::max(P_safe(i, i), 1e-6);
+    }
+    
+    MatrixXd sqrt_P = P_safe.llt().matrixL();
     
     // Center sigma point
     sigma_points.col(0) = x;
@@ -766,8 +773,15 @@ void BLUEROV2_DOB::UKF() {
         Pxy += weights_c(0, i) * diff_x * diff_y.transpose();
     }
     
-    // Compute Kalman gain
-    MatrixXd Kal = Pxy * Pyy.inverse();
+    // Compute Kalman gain with safety check
+    MatrixXd Kal;
+    double det = Pyy.determinant();
+    if (std::abs(det) > 1e-10) {
+        Kal = Pxy * Pyy.inverse();
+    } else {
+        // Use pseudo-inverse or skip update if matrix is singular
+        Kal = Pxy * Pyy.completeOrthogonalDecomposition().pseudoInverse();
+    }
     
     // Update state and covariance
     MatrixXd y_err = meas_y - y_pred;
