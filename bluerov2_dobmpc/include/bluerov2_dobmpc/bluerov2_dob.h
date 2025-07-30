@@ -242,7 +242,6 @@ class BLUEROV2_DOB{
     double lateral_kp = 0.5;             // lateral control gain
     double target_depth = -95.0;         // target depth
     double target_surge_velocity = 0.5;  // target forward velocity
-    bool straight_line_mode = false;      // straight line navigation mode
     
     // Fault detection parameters
     struct FaultDetection {
@@ -345,6 +344,7 @@ class BLUEROV2_DOB{
     public:
 
     bool is_start;
+    bool straight_line_mode = false;      // straight line navigation mode
 
     BLUEROV2_DOB(ros::NodeHandle&);                         // constructor
     Euler q2rpy(const geometry_msgs::Quaternion&);          // quaternion to euler angle
