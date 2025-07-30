@@ -24,12 +24,17 @@ int main(int argc, char **argv)
         if(br.is_start==true)
         {
             // br.applyBodyWrench();
+            ROS_INFO("Calling UKF...");
             br.UKF();  // Changed from EKF to UKF
+            ROS_INFO("UKF completed, calling solve...");
             br.solve();
+            ROS_INFO("Solve completed");
             
             // Add straight line navigation if enabled
             if (br.straight_line_mode) {
+                ROS_INFO("Calling straight line navigation...");
                 br.straight_line_navigation();
+                ROS_INFO("Straight line navigation completed");
             }
         }
         ros::spinOnce();

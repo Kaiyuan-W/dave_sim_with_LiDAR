@@ -749,10 +749,24 @@ MatrixXd BLUEROV2_DOB::compute_covariance_from_sigma_points(MatrixXd sigma_point
 
 // UKF implementation (replacing EKF)
 void BLUEROV2_DOB::UKF() {
+    // Check if we have received pose data
+    if (!is_start) {
+        ROS_WARN("UKF called before pose data received, skipping...");
+        return;
+    }
+    
     // Get input and measurement
     meas_u << current_t.t0, current_t.t1, current_t.t2, current_t.t3, current_t.t4, current_t.t5;
     Matrix<double,6,1> tau;
     tau = K*meas_u;
+    
+    // Check for valid velocity data
+    if (v_linear_body.size() < 3 || v_angular_body.size() < 3) {
+        ROS_WARN("Velocity data not available, using zeros");
+        v_linear_body = Vector3d::Zero();
+        v_angular_body = Vector3d::Zero();
+    }
+    
     meas_y << local_pos.x, local_pos.y, local_pos.z, local_euler.phi, local_euler.theta, local_euler.psi,
             v_linear_body[0], v_linear_body[1], v_linear_body[2], v_angular_body[0], v_angular_body[1], v_angular_body[2],
             tau(0),tau(1),tau(2),tau(3),tau(4),tau(5);
