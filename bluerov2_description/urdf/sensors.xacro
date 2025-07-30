@@ -52,12 +52,12 @@
     range_min="0.1"
     range_max="20.0"
     range_stddev="0.01"
-    mesh="file://$(find bluerov2_description)/meshes/lidar.dae">
+    mesh="file://$(find bluerov2_description)/meshes/ping1d.dae">
     <inertia ixx="0.00001" ixy="0.0" ixz="0.0" iyy="0.00001" iyz="0.0" izz="0.00001" />
     <origin xyz="0 0.15 0" rpy="0 0 1.5708"/>
     <visual>
       <geometry>
-        <mesh filename="file://$(find bluerov2_description)/meshes/lidar.dae" scale="1 1 1"/>
+        <mesh filename="file://$(find bluerov2_description)/../Lidar/meshes/lidar_2d_v1.dae" scale="1 1 1"/>
       </geometry>
     </visual>
   </xacro:bluerov2_sss>
@@ -75,12 +75,12 @@
     range_min="0.1"
     range_max="20.0"
     range_stddev="0.01"
-    mesh="file://$(find bluerov2_description)/meshes/lidar.dae">
+    mesh="file://$(find bluerov2_description)/meshes/ping1d.dae">
     <inertia ixx="0.00001" ixy="0.0" ixz="0.0" iyy="0.00001" iyz="0.0" izz="0.00001" />
     <origin xyz="0 -0.15 0" rpy="0 0 -1.5708"/>
     <visual>
       <geometry>
-        <mesh filename="file://$(find bluerov2_description)/meshes/lidar.dae" scale="1 1 1"/>
+        <mesh filename="file://$(find bluerov2_description)/../Lidar/meshes/lidar_2d_v1.dae" scale="1 1 1"/>
       </geometry>
     </visual>
   </xacro:bluerov2_sss>
@@ -98,12 +98,12 @@
     range_min="0.1"
     range_max="20.0"
     range_stddev="0.01"
-    mesh="file://$(find bluerov2_description)/meshes/lidar.dae">
+    mesh="file://$(find bluerov2_description)/meshes/ping1d.dae">
     <inertia ixx="0.00001" ixy="0.0" ixz="0.0" iyy="0.00001" iyz="0.0" izz="0.00001" />
     <origin xyz="0.2 0 0" rpy="0 0 0"/>
     <visual>
       <geometry>
-        <mesh filename="file://$(find bluerov2_description)/meshes/lidar.dae" scale="1 1 1"/>
+        <mesh filename="file://$(find bluerov2_description)/../Lidar/meshes/lidar_2d_v1.dae" scale="1 1 1"/>
       </geometry>
     </visual>
   </xacro:bluerov2_sss>
