@@ -221,7 +221,10 @@ BLUEROV2_DOB::Euler BLUEROV2_DOB::q2rpy(const geometry_msgs::Quaternion& quatern
 
 // euler angle to quaternion
 geometry_msgs::Quaternion BLUEROV2_DOB::rpy2q(const Euler& euler){
-    geometry_msgs::Quaternion quaternion = tf::createQuaternionMsgFromRollPitchYaw(euler.phi, euler.theta, euler.psi);
+    tf2::Quaternion quat;
+    quat.setRPY(euler.phi, euler.theta, euler.psi);
+    geometry_msgs::Quaternion quaternion;
+    tf2::convert(quat, quaternion);
     return quaternion;
 }
 
