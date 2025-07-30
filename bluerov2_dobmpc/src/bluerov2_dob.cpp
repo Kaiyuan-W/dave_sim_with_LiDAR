@@ -74,6 +74,14 @@ BLUEROV2_DOB::BLUEROV2_DOB(ros::NodeHandle& nh)
     applied_wrench.tx = 0.0;
     applied_wrench.ty = 0.0;
     applied_wrench.tz = 0.0;
+    
+    // Initialize current thrust
+    current_t.t0 = 0.0;
+    current_t.t1 = 0.0;
+    current_t.t2 = 0.0;
+    current_t.t3 = 0.0;
+    current_t.t4 = 0.0;
+    current_t.t5 = 0.0;
 
     // ros subsriber & publisher
     pose_sub = nh.subscribe<nav_msgs::Odometry>("/bluerov2/pose_gt", 20, &BLUEROV2_DOB::pose_cb, this);
@@ -672,9 +680,10 @@ MatrixXd BLUEROV2_DOB::generate_sigma_points(MatrixXd x, MatrixXd P) {
     sigma_points.col(0) = x;
     
     // Generate remaining sigma points
+    double gamma = sqrt(L + lambda);
     for (int i = 0; i < L; i++) {
-        sigma_points.col(i + 1) = x + sqrt(L + lambda) * sqrt_P.col(i);
-        sigma_points.col(i + L + 1) = x - sqrt(L + lambda) * sqrt_P.col(i);
+        sigma_points.col(i + 1) = x + gamma * sqrt_P.col(i);
+        sigma_points.col(i + L + 1) = x - gamma * sqrt_P.col(i);
     }
     
     return sigma_points;
