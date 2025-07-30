@@ -3,6 +3,8 @@
 // Initialize MPC
 BLUEROV2_DOB::BLUEROV2_DOB(ros::NodeHandle& nh)
 {
+    ROS_INFO("Starting BLUEROV2_DOB constructor...");
+    
     // read parameter
     nh.getParam("/bluerov2_dob_node/auto_yaw",AUTO_YAW);
     nh.getParam("/bluerov2_dob_node/read_wrench",READ_WRENCH);
@@ -19,7 +21,10 @@ BLUEROV2_DOB::BLUEROV2_DOB(ros::NodeHandle& nh)
     nh.getParam("/bluerov2_dob_node/disturbance_theta", solver_param.disturbance_theta);
     nh.getParam("/bluerov2_dob_node/disturbance_psi", solver_param.disturbance_psi);
     
+    ROS_INFO("Parameters loaded successfully");
+    
     // Pre-load the trajectory
+    ROS_INFO("Loading trajectory from: %s", REF_TRAJ.c_str());
     const char * c = REF_TRAJ.c_str();
 	number_of_steps = readDataFromFile(c, trajectory);
 	if (number_of_steps == 0){
@@ -30,14 +35,17 @@ BLUEROV2_DOB::BLUEROV2_DOB(ros::NodeHandle& nh)
 	}
 
     // Initialize MPC
+    ROS_INFO("Initializing MPC...");
     int create_status = 1;
     create_status = bluerov2_acados_create(mpc_capsule);
     if (create_status != 0){
         ROS_INFO_STREAM("acados_create() returned status " << create_status << ". Exiting." << std::endl);
         exit(1);
     }
+    ROS_INFO("MPC initialized successfully");
 
     // Initialize EKF
+    ROS_INFO("Initializing EKF matrices...");
     M_values << mass + added_mass[0], mass + added_mass[1], mass + added_mass[2], Ix + added_mass[3], Iy + added_mass[4], Iz + added_mass[5];
     M = M_values.asDiagonal();
     M(0,4) = mass*ZG;
@@ -45,6 +53,7 @@ BLUEROV2_DOB::BLUEROV2_DOB(ros::NodeHandle& nh)
     M(3,1) = -mass*ZG;
     M(4,0) = mass*ZG;
     invM = M.inverse();
+    ROS_INFO("EKF matrices initialized");
 
     // Dl_values << -11.7391, -20, -31.8678, -25, -44.9085, -5;
     // Dl = Dl_values.asDiagonal();
@@ -65,7 +74,9 @@ BLUEROV2_DOB::BLUEROV2_DOB(ros::NodeHandle& nh)
     esti_P = P0;
     
     // Initialize UKF
+    ROS_INFO("Initializing UKF...");
     initialize_ukf();
+    ROS_INFO("UKF initialized successfully");
 
     // Initialize body wrench force
     applied_wrench.fx = 0.0;
@@ -112,30 +123,35 @@ BLUEROV2_DOB::BLUEROV2_DOB(ros::NodeHandle& nh)
     pressure_sub = nh.subscribe<sensor_msgs::FluidPressure>("/bluerov2/pressure", 20, &BLUEROV2_DOB::pressure_cb, this);
     
     // Initialize LiDAR subscribers
+    ROS_INFO("Initializing LiDAR subscribers...");
     left_lidar_sub = nh.subscribe<sensor_msgs::LaserScan>("/bluerov2/left_lidar_/scan", 20, &BLUEROV2_DOB::left_lidar_cb, this);
     right_lidar_sub = nh.subscribe<sensor_msgs::LaserScan>("/bluerov2/right_lidar_/scan", 20, &BLUEROV2_DOB::right_lidar_cb, this);
     forward_lidar_sub = nh.subscribe<sensor_msgs::LaserScan>("/bluerov2/forward_lidar_/scan", 20, &BLUEROV2_DOB::forward_lidar_cb, this);
+    ROS_INFO("LiDAR subscribers initialized");
     
     // Initialize keyboard subscriber
+    ROS_INFO("Initializing keyboard subscriber...");
     keyboard_sub = nh.subscribe<std_msgs::String>("/keyboard_input", 10, &BLUEROV2_DOB::keyboard_cb, this);
     pcl_sub = nh.subscribe("/camera/depth/color/points", 20, &BLUEROV2_DOB::pcl_cb, this);
     
-    // Initialize UKF
-    initialize_ukf();
-    
     // Initialize fault detection timers
+    ROS_INFO("Initializing fault detection timers...");
     fault_detection.last_imu_time = ros::Time::now();
     fault_detection.last_pressure_time = ros::Time::now();
     fault_detection.last_lidar_time = ros::Time::now();
     
     // Initialize trajectory visualization
+    ROS_INFO("Initializing trajectory visualization...");
     trajectory_path.header.frame_id = "odom_frame";
     trajectory_path.header.stamp = ros::Time::now();
 
     // initialize
+    ROS_INFO("Initializing control arrays...");
     for(unsigned int i=0; i < BLUEROV2_NU; i++) acados_out.u0[i] = 0.0;
     for(unsigned int i=0; i < BLUEROV2_NX; i++) acados_in.x0[i] = 0.0;
     is_start = false;
+    
+    ROS_INFO("BLUEROV2_DOB constructor completed successfully");
 }
 
 void BLUEROV2_DOB::pose_cb(const nav_msgs::Odometry::ConstPtr& pose)
