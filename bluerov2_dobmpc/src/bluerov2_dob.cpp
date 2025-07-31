@@ -273,6 +273,17 @@ void BLUEROV2_DOB::ref_cb(int line_to_read)
     ROS_INFO("number_of_steps: %d", number_of_steps);
     ROS_INFO("BLUEROV2_N: %d", BLUEROV2_N);
     
+    // Safety check: if trajectory is not loaded, use default values
+    if (number_of_steps == 0) {
+        ROS_WARN("Trajectory not loaded, using default reference values");
+        for (unsigned int i = 0; i <= BLUEROV2_N; i++) {
+            for (unsigned int j = 0; j <= BLUEROV2_NY; j++) {
+                acados_in.yref[i][j] = 0.0;  // Default to zero
+            }
+        }
+        return;
+    }
+    
     if (BLUEROV2_N+line_to_read+1 <= number_of_steps)  // All ref points within the file
     {
         for (unsigned int i = 0; i <= BLUEROV2_N; i++)  // Fill all horizon with file data
