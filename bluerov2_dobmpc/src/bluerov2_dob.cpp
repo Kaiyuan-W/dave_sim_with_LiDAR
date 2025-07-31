@@ -278,62 +278,95 @@ void BLUEROV2_DOB::ref_cb(int line_to_read)
     ROS_INFO("number_of_steps: %d", number_of_steps);
     ROS_INFO("BLUEROV2_N: %d", BLUEROV2_N);
     
-    // Safety check: if trajectory is not loaded, use default values
-    if (number_of_steps == 0) {
-        ROS_WARN("Trajectory not loaded, using default reference values");
-        for (unsigned int i = 0; i <= BLUEROV2_N; i++) {
-            for (unsigned int j = 0; j <= BLUEROV2_NY; j++) {
-                acados_in.yref[i][j] = 0.0;  // Default to zero
-            }
-        }
-        return;
-    }
-    
-    if (BLUEROV2_N+line_to_read+1 <= number_of_steps)  // All ref points within the file
-    {
-        for (unsigned int i = 0; i <= BLUEROV2_N; i++)  // Fill all horizon with file data
-        {
-            for (unsigned int j = 0; j <= BLUEROV2_NY; j++)
-            {
-                acados_in.yref[i][j] = trajectory[i+line_to_read][j];
-            }
-        }
-    }
-    else if(line_to_read < number_of_steps)    // Part of ref points within the file
-    {
-        for (unsigned int i = 0; i < number_of_steps-line_to_read; i++)    // Fill part of horizon with file data
-        {
-            
-            for (unsigned int j = 0; j <= BLUEROV2_NY; j++)
-            {
-                acados_in.yref[i][j] = trajectory[i+line_to_read][j];
-            }
-            
-        }
+    // Generate reference trajectory based on current robot position
+    generate_dynamic_reference_trajectory();
+}
 
-        for (unsigned int i = number_of_steps-line_to_read; i <= BLUEROV2_N; i++)  // Fill the rest horizon with the last point
-        {
-            
-            for (unsigned int j = 0; j <= BLUEROV2_NY; j++)
-            {
-                acados_in.yref[i][j] = trajectory[number_of_steps-1][j];
-            }
-            
-        }
+// New function to generate reference trajectory based on current robot position
+void BLUEROV2_DOB::generate_dynamic_reference_trajectory()
+{
+    ROS_INFO("Generating dynamic reference trajectory based on current robot position");
+    
+    // Get current robot position
+    double current_x = local_pos.x;
+    double current_y = local_pos.y;
+    double current_z = local_pos.z;
+    double current_psi = local_euler.psi;
+    
+    ROS_INFO("Current robot position: x=%.3f, y=%.3f, z=%.3f, psi=%.3f", 
+             current_x, current_y, current_z, current_psi);
+    
+    // Define target position (this could be configurable or come from a mission planner)
+    double target_x = 0.0;  // Target x position
+    double target_y = 0.0;  // Target y position  
+    double target_z = -5.0; // Target depth (5m below surface)
+    double target_psi = 0.0; // Target yaw angle
+    
+    // Try to get target from ROS parameters, otherwise use defaults
+    if (!ros::param::get("/bluerov2_dob_node/target_x", target_x)) {
+        ROS_INFO("Using default target_x: %.3f", target_x);
     }
-    else    // none of ref points within the file
-    {
-        for (unsigned int i = 0; i <= BLUEROV2_N; i++)  // Fill all horizon with the last point
-        {
-            
-            for (unsigned int j = 0; j <= BLUEROV2_NY; j++)
-            {
-                acados_in.yref[i][j] = trajectory[number_of_steps-1][j];
-            }
-            
-        }
+    if (!ros::param::get("/bluerov2_dob_node/target_y", target_y)) {
+        ROS_INFO("Using default target_y: %.3f", target_y);
+    }
+    if (!ros::param::get("/bluerov2_dob_node/target_z", target_z)) {
+        ROS_INFO("Using default target_z: %.3f", target_z);
+    }
+    if (!ros::param::get("/bluerov2_dob_node/target_psi", target_psi)) {
+        ROS_INFO("Using default target_psi: %.3f", target_psi);
     }
     
+    // Calculate distance to target
+    double distance_to_target = sqrt(pow(target_x - current_x, 2) + 
+                                   pow(target_y - current_y, 2) + 
+                                   pow(target_z - current_z, 2));
+    
+    ROS_INFO("Distance to target: %.3f meters", distance_to_target);
+    
+    // Generate reference trajectory for the entire horizon
+    for (unsigned int i = 0; i <= BLUEROV2_N; i++) {
+        // Calculate progress along the trajectory (0 to 1)
+        double progress = (double)i / BLUEROV2_N;
+        
+        // Use smooth interpolation (sigmoid-like function for smooth acceleration/deceleration)
+        double smooth_progress = 1.0 / (1.0 + exp(-10.0 * (progress - 0.5)));
+        
+        // Interpolate position
+        acados_in.yref[i][0] = current_x + (target_x - current_x) * smooth_progress;  // x
+        acados_in.yref[i][1] = current_y + (target_y - current_y) * smooth_progress;  // y
+        acados_in.yref[i][2] = current_z + (target_z - current_z) * smooth_progress;  // z
+        
+        // Interpolate orientation (handle angle wrapping)
+        double psi_diff = target_psi - current_psi;
+        // Normalize angle difference to [-pi, pi]
+        while (psi_diff > M_PI) psi_diff -= 2 * M_PI;
+        while (psi_diff < -M_PI) psi_diff += 2 * M_PI;
+        
+        acados_in.yref[i][3] = 0.0;  // phi (roll) - keep level
+        acados_in.yref[i][4] = 0.0;  // theta (pitch) - keep level
+        acados_in.yref[i][5] = current_psi + psi_diff * smooth_progress;  // psi (yaw)
+        
+        // Set velocities to zero for now (could be calculated based on trajectory)
+        acados_in.yref[i][6] = 0.0;   // u
+        acados_in.yref[i][7] = 0.0;   // v
+        acados_in.yref[i][8] = 0.0;   // w
+        acados_in.yref[i][9] = 0.0;   // p
+        acados_in.yref[i][10] = 0.0;  // q
+        acados_in.yref[i][11] = 0.0;  // r
+        
+        // Set disturbance estimates to zero (could be updated from UKF)
+        acados_in.yref[i][12] = 0.0;  // disturbance x
+        acados_in.yref[i][13] = 0.0;  // disturbance y
+        acados_in.yref[i][14] = 0.0;  // disturbance z
+        acados_in.yref[i][15] = 0.0;  // disturbance phi
+        acados_in.yref[i][16] = 0.0;  // disturbance theta
+        acados_in.yref[i][17] = 0.0;  // disturbance psi
+    }
+    
+    ROS_INFO("Dynamic reference trajectory generated successfully");
+    ROS_INFO("Reference trajectory: start=(%.3f,%.3f,%.3f) -> end=(%.3f,%.3f,%.3f)", 
+             acados_in.yref[0][0], acados_in.yref[0][1], acados_in.yref[0][2],
+             acados_in.yref[BLUEROV2_N][0], acados_in.yref[BLUEROV2_N][1], acados_in.yref[BLUEROV2_N][2]);
 }
 
 // solve MPC
@@ -597,30 +630,9 @@ void BLUEROV2_DOB::solve(){
     ROS_INFO("ref_cb completed successfully"); 
     line_number++;
     
-    // Modify reference trajectory to be closer to current robot position
-    // This helps reduce the initial error and makes the problem more feasible
-    ROS_INFO("Adjusting reference trajectory to match current position...");
-    double current_x = acados_in.x0[6];
-    double current_y = acados_in.x0[7];
-    double current_z = acados_in.x0[8];
-    
-    // Set the first reference point to current position to reduce initial error
-    acados_in.yref[0][0] = current_x;
-    acados_in.yref[0][1] = current_y;
-    acados_in.yref[0][2] = current_z;
-    
-    // Also adjust the next few reference points to create a smooth transition
-    for (int i = 1; i <= std::min(5, (int)BLUEROV2_N); i++) {
-        // Gradually move towards the original reference
-        double alpha = (double)i / 5.0;  // Interpolation factor
-        acados_in.yref[i][0] = current_x * (1.0 - alpha) + acados_in.yref[i][0] * alpha;
-        acados_in.yref[i][1] = current_y * (1.0 - alpha) + acados_in.yref[i][1] * alpha;
-        acados_in.yref[i][2] = current_z * (1.0 - alpha) + acados_in.yref[i][2] * alpha;
-    }
-    
-    ROS_INFO("Adjusted reference: (%.6f, %.6f, %.6f) -> (%.6f, %.6f, %.6f)", 
-             acados_in.yref[0][0], acados_in.yref[0][1], acados_in.yref[0][2],
-             current_x, current_y, current_z);
+    // Note: Reference trajectory is now generated dynamically based on current robot position
+    // No need to adjust it further since it already starts from current position
+    ROS_INFO("Reference trajectory is dynamically generated from current robot position");
     
     // Debug: Print reference values
     ROS_INFO("Reference values for step 0:");
