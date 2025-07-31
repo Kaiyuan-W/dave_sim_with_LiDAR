@@ -1,5 +1,10 @@
 #include <bluerov2_dobmpc/bluerov2_dob.h>
 
+// Fallback definition for M_PI if not defined
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 // Initialize MPC
 BLUEROV2_DOB::BLUEROV2_DOB(ros::NodeHandle& nh)
 {
@@ -454,9 +459,54 @@ void BLUEROV2_DOB::solve(){
     ROS_INFO("nlp_config pointer: %p", (void*)mpc_capsule->nlp_config);
     ROS_INFO("nlp_dims pointer: %p", (void*)mpc_capsule->nlp_dims);
     ROS_INFO("nlp_in pointer: %p", (void*)mpc_capsule->nlp_in);
-    ocp_nlp_constraints_model_set(mpc_capsule->nlp_config,mpc_capsule->nlp_dims,mpc_capsule->nlp_in, 0, "lbx", acados_in.x0);
+    
+    // Create proper bounds arrays instead of using initial state for both bounds
+    double lbx[18], ubx[18];
+    
+    // Set lower bounds - allow reasonable ranges for all states
+    lbx[0] = -10.0;   // u velocity
+    lbx[1] = -10.0;   // v velocity  
+    lbx[2] = -20.0;   // w velocity (depth rate)
+    lbx[3] = -1.0;    // p angular velocity
+    lbx[4] = -1.0;    // q angular velocity
+    lbx[5] = -1.0;    // r angular velocity
+    lbx[6] = -100.0;  // x position
+    lbx[7] = -100.0;  // y position
+    lbx[8] = -100.0;  // z position (depth)
+    lbx[9] = -M_PI;   // phi (roll)
+    lbx[10] = -M_PI;  // theta (pitch)
+    lbx[11] = -M_PI;  // psi (yaw)
+    lbx[12] = -10.0;  // disturbance x
+    lbx[13] = -10.0;  // disturbance y
+    lbx[14] = -10.0;  // disturbance z
+    lbx[15] = -1.0;   // disturbance phi
+    lbx[16] = -1.0;   // disturbance theta
+    lbx[17] = -1.0;   // disturbance psi
+    
+    // Set upper bounds
+    ubx[0] = 10.0;    // u velocity
+    ubx[1] = 10.0;    // v velocity
+    ubx[2] = 20.0;    // w velocity (depth rate)
+    ubx[3] = 1.0;     // p angular velocity
+    ubx[4] = 1.0;     // q angular velocity
+    ubx[5] = 1.0;     // r angular velocity
+    ubx[6] = 100.0;   // x position
+    ubx[7] = 100.0;   // y position
+    ubx[8] = 100.0;   // z position (depth)
+    ubx[9] = M_PI;    // phi (roll)
+    ubx[10] = M_PI;   // theta (pitch)
+    ubx[11] = M_PI;   // psi (yaw)
+    ubx[12] = 10.0;   // disturbance x
+    ubx[13] = 10.0;   // disturbance y
+    ubx[14] = 10.0;   // disturbance z
+    ubx[15] = 1.0;    // disturbance phi
+    ubx[16] = 1.0;    // disturbance theta
+    ubx[17] = 1.0;    // disturbance psi
+    
+    // Set the bounds in ACADOS
+    ocp_nlp_constraints_model_set(mpc_capsule->nlp_config,mpc_capsule->nlp_dims,mpc_capsule->nlp_in, 0, "lbx", lbx);
     ROS_INFO("Lower bounds set successfully");
-    ocp_nlp_constraints_model_set(mpc_capsule->nlp_config,mpc_capsule->nlp_dims,mpc_capsule->nlp_in, 0, "ubx", acados_in.x0);
+    ocp_nlp_constraints_model_set(mpc_capsule->nlp_config,mpc_capsule->nlp_dims,mpc_capsule->nlp_in, 0, "ubx", ubx);
     ROS_INFO("Upper bounds set successfully");
     
     // Debug: Check if initial state is within bounds
@@ -576,7 +626,37 @@ void BLUEROV2_DOB::solve(){
 
     // Solve OCP
     ROS_INFO("Calling acados solver...");
+    
+    // Additional debugging: Check if initial state is feasible
+    ROS_INFO("Final check before solving:");
+    ROS_INFO("Initial state: x=%.3f, y=%.3f, z=%.3f", acados_in.x0[6], acados_in.x0[7], acados_in.x0[8]);
+    ROS_INFO("Reference: x=%.3f, y=%.3f, z=%.3f", acados_in.yref[0][0], acados_in.yref[0][1], acados_in.yref[0][2]);
+    ROS_INFO("Position error: %.3f", sqrt(pow(acados_in.x0[6] - acados_in.yref[0][0], 2) + 
+                                         pow(acados_in.x0[7] - acados_in.yref[0][1], 2) + 
+                                         pow(acados_in.x0[8] - acados_in.yref[0][2], 2)));
+    
     acados_status = bluerov2_acados_solve(mpc_capsule);
+    
+    // If first attempt fails, try with relaxed bounds
+    if (acados_status != 0) {
+        ROS_WARN("First solver attempt failed, trying with relaxed bounds...");
+        
+        // Relax bounds by increasing the range
+        double relaxed_lbx[18], relaxed_ubx[18];
+        for (int i = 0; i < 18; i++) {
+            relaxed_lbx[i] = lbx[i] * 2.0;  // Double the range
+            relaxed_ubx[i] = ubx[i] * 2.0;
+        }
+        
+        // Set relaxed bounds
+        ocp_nlp_constraints_model_set(mpc_capsule->nlp_config,mpc_capsule->nlp_dims,mpc_capsule->nlp_in, 0, "lbx", relaxed_lbx);
+        ocp_nlp_constraints_model_set(mpc_capsule->nlp_config,mpc_capsule->nlp_dims,mpc_capsule->nlp_in, 0, "ubx", relaxed_ubx);
+        
+        // Try solving again
+        acados_status = bluerov2_acados_solve(mpc_capsule);
+        ROS_INFO("Second solver attempt completed with status: %d", acados_status);
+    }
+    
     ROS_INFO("Acados solver completed with status: %d", acados_status);
     
     // Add detailed status information
@@ -623,13 +703,36 @@ void BLUEROV2_DOB::solve(){
     // If QP solver failed, use simple fallback control
     if (acados_status != 0) {
         ROS_WARN("QP solver failed, using fallback control");
-        // Simple fallback: small constant thrust to maintain position
-        current_t.t0 = 0.1;  // Small forward thrust
-        current_t.t1 = 0.0;  // No lateral thrust
-        current_t.t2 = 0.0;  // No vertical thrust
-        current_t.t3 = 0.0;  // No rotational thrust
+        
+        // Calculate position error to determine control direction
+        double pos_error_x = acados_in.x0[6] - acados_in.yref[0][0];
+        double pos_error_y = acados_in.x0[7] - acados_in.yref[0][1];
+        double pos_error_z = acados_in.x0[8] - acados_in.yref[0][2];
+        
+        // Simple proportional control based on position error
+        double kp = 0.1;  // Proportional gain
+        double max_thrust = 0.5;  // Maximum thrust for safety
+        
+        // Calculate control inputs based on position error
+        double thrust_x = -kp * pos_error_x;
+        double thrust_y = -kp * pos_error_y;
+        double thrust_z = -kp * pos_error_z;
+        
+        // Limit thrust values
+        thrust_x = std::max(-max_thrust, std::min(max_thrust, thrust_x));
+        thrust_y = std::max(-max_thrust, std::min(max_thrust, thrust_y));
+        thrust_z = std::max(-max_thrust, std::min(max_thrust, thrust_z));
+        
+        // Apply fallback control
+        current_t.t0 = thrust_x;  // Forward/backward
+        current_t.t1 = thrust_y;  // Lateral
+        current_t.t2 = thrust_z;  // Vertical
+        current_t.t3 = 0.0;       // No rotational control for safety
         current_t.t4 = 0.0;
         current_t.t5 = 0.0;
+        
+        ROS_INFO("Fallback control: thrust_x=%.3f, thrust_y=%.3f, thrust_z=%.3f", 
+                 thrust_x, thrust_y, thrust_z);
     }
     
     ROS_INFO("Applied thrust values: t0=%.6f, t1=%.6f, t2=%.6f, t3=%.6f, t4=%.6f, t5=%.6f", 
