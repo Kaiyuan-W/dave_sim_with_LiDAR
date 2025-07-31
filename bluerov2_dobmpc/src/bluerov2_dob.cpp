@@ -609,6 +609,15 @@ void BLUEROV2_DOB::solve(){
     acados_in.yref[0][1] = current_y;
     acados_in.yref[0][2] = current_z;
     
+    // Also adjust the next few reference points to create a smooth transition
+    for (int i = 1; i <= std::min(5, (int)BLUEROV2_N); i++) {
+        // Gradually move towards the original reference
+        double alpha = (double)i / 5.0;  // Interpolation factor
+        acados_in.yref[i][0] = current_x * (1.0 - alpha) + acados_in.yref[i][0] * alpha;
+        acados_in.yref[i][1] = current_y * (1.0 - alpha) + acados_in.yref[i][1] * alpha;
+        acados_in.yref[i][2] = current_z * (1.0 - alpha) + acados_in.yref[i][2] * alpha;
+    }
+    
     ROS_INFO("Adjusted reference: (%.6f, %.6f, %.6f) -> (%.6f, %.6f, %.6f)", 
              acados_in.yref[0][0], acados_in.yref[0][1], acados_in.yref[0][2],
              current_x, current_y, current_z);
@@ -635,17 +644,31 @@ void BLUEROV2_DOB::solve(){
                                          pow(acados_in.x0[7] - acados_in.yref[0][1], 2) + 
                                          pow(acados_in.x0[8] - acados_in.yref[0][2], 2)));
     
-    acados_status = bluerov2_acados_solve(mpc_capsule);
+    // Check for numerical issues in the initial state
+    bool has_numerical_issues = false;
+    for (int i = 0; i < 18; i++) {
+        if (std::isnan(acados_in.x0[i]) || std::isinf(acados_in.x0[i])) {
+            ROS_ERROR("Numerical issue detected in state %d: %.6f", i, acados_in.x0[i]);
+            has_numerical_issues = true;
+        }
+    }
     
-    // If first attempt fails, try with relaxed bounds
+    if (has_numerical_issues) {
+        ROS_WARN("Numerical issues detected, using fallback control");
+        acados_status = 4;  // Force fallback control
+    } else {
+        acados_status = bluerov2_acados_solve(mpc_capsule);
+    }
+    
+    // If first attempt fails, try with much more relaxed bounds
     if (acados_status != 0) {
-        ROS_WARN("First solver attempt failed, trying with relaxed bounds...");
+        ROS_WARN("First solver attempt failed, trying with much more relaxed bounds...");
         
-        // Relax bounds by increasing the range
+        // Much more relaxed bounds - increase range by 10x instead of 2x
         double relaxed_lbx[18], relaxed_ubx[18];
         for (int i = 0; i < 18; i++) {
-            relaxed_lbx[i] = lbx[i] * 2.0;  // Double the range
-            relaxed_ubx[i] = ubx[i] * 2.0;
+            relaxed_lbx[i] = lbx[i] * 10.0;  // 10x the range
+            relaxed_ubx[i] = ubx[i] * 10.0;
         }
         
         // Set relaxed bounds
@@ -655,6 +678,26 @@ void BLUEROV2_DOB::solve(){
         // Try solving again
         acados_status = bluerov2_acados_solve(mpc_capsule);
         ROS_INFO("Second solver attempt completed with status: %d", acados_status);
+    }
+    
+    // If still failing, try with even more aggressive relaxation
+    if (acados_status != 0) {
+        ROS_WARN("Second solver attempt failed, trying with extremely relaxed bounds...");
+        
+        // Extremely relaxed bounds - essentially no bounds
+        double no_bounds_lbx[18], no_bounds_ubx[18];
+        for (int i = 0; i < 18; i++) {
+            no_bounds_lbx[i] = -1000.0;  // Very large negative bounds
+            no_bounds_ubx[i] = 1000.0;   // Very large positive bounds
+        }
+        
+        // Set extremely relaxed bounds
+        ocp_nlp_constraints_model_set(mpc_capsule->nlp_config,mpc_capsule->nlp_dims,mpc_capsule->nlp_in, 0, "lbx", no_bounds_lbx);
+        ocp_nlp_constraints_model_set(mpc_capsule->nlp_config,mpc_capsule->nlp_dims,mpc_capsule->nlp_in, 0, "ubx", no_bounds_ubx);
+        
+        // Try solving again
+        acados_status = bluerov2_acados_solve(mpc_capsule);
+        ROS_INFO("Third solver attempt completed with status: %d", acados_status);
     }
     
     ROS_INFO("Acados solver completed with status: %d", acados_status);
@@ -709,14 +752,20 @@ void BLUEROV2_DOB::solve(){
         double pos_error_y = acados_in.x0[7] - acados_in.yref[0][1];
         double pos_error_z = acados_in.x0[8] - acados_in.yref[0][2];
         
-        // Simple proportional control based on position error
-        double kp = 0.1;  // Proportional gain
-        double max_thrust = 0.5;  // Maximum thrust for safety
+        // Calculate velocity error for damping
+        double vel_error_x = acados_in.x0[0];  // Current velocity
+        double vel_error_y = acados_in.x0[1];
+        double vel_error_z = acados_in.x0[2];
         
-        // Calculate control inputs based on position error
-        double thrust_x = -kp * pos_error_x;
-        double thrust_y = -kp * pos_error_y;
-        double thrust_z = -kp * pos_error_z;
+        // Simple PD control based on position and velocity error
+        double kp = 0.05;   // Proportional gain (reduced for stability)
+        double kd = 0.1;    // Derivative gain for damping
+        double max_thrust = 0.3;  // Reduced maximum thrust for safety
+        
+        // Calculate control inputs based on position and velocity error
+        double thrust_x = -kp * pos_error_x - kd * vel_error_x;
+        double thrust_y = -kp * pos_error_y - kd * vel_error_y;
+        double thrust_z = -kp * pos_error_z - kd * vel_error_z;
         
         // Limit thrust values
         thrust_x = std::max(-max_thrust, std::min(max_thrust, thrust_x));
@@ -733,6 +782,8 @@ void BLUEROV2_DOB::solve(){
         
         ROS_INFO("Fallback control: thrust_x=%.3f, thrust_y=%.3f, thrust_z=%.3f", 
                  thrust_x, thrust_y, thrust_z);
+        ROS_INFO("Position errors: x=%.3f, y=%.3f, z=%.3f", pos_error_x, pos_error_y, pos_error_z);
+        ROS_INFO("Velocity errors: x=%.3f, y=%.3f, z=%.3f", vel_error_x, vel_error_y, vel_error_z);
     }
     
     ROS_INFO("Applied thrust values: t0=%.6f, t1=%.6f, t2=%.6f, t3=%.6f, t4=%.6f, t5=%.6f", 
