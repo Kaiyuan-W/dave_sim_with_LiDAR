@@ -407,6 +407,7 @@ class BLUEROV2_DOB{
     // Trajectory visualization functions
     void update_trajectory();
     void publish_trajectory();
+    void calculate_trajectory_straightness();
     
     // UKF specific functions
     void initialize_ukf();

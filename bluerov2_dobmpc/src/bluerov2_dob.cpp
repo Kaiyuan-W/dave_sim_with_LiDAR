@@ -127,12 +127,15 @@ BLUEROV2_DOB::BLUEROV2_DOB(ros::NodeHandle& nh)
     imu_sub = nh.subscribe<sensor_msgs::Imu>("/bluerov2/imu", 20, &BLUEROV2_DOB::imu_cb, this);
     pressure_sub = nh.subscribe<sensor_msgs::FluidPressure>("/bluerov2/pressure", 20, &BLUEROV2_DOB::pressure_cb, this);
     
-    // Initialize LiDAR subscribers
-    ROS_INFO("Initializing LiDAR subscribers...");
-    left_lidar_sub = nh.subscribe<sensor_msgs::LaserScan>("/bluerov2/left_lidar_/scan", 20, &BLUEROV2_DOB::left_lidar_cb, this);
-    right_lidar_sub = nh.subscribe<sensor_msgs::LaserScan>("/bluerov2/right_lidar_/scan", 20, &BLUEROV2_DOB::right_lidar_cb, this);
+    // Initialize LiDAR subscribers - Use only forward LiDAR for simplicity
+    ROS_INFO("Initializing LiDAR subscriber (forward only)...");
     forward_lidar_sub = nh.subscribe<sensor_msgs::LaserScan>("/bluerov2/forward_lidar_/scan", 20, &BLUEROV2_DOB::forward_lidar_cb, this);
-    ROS_INFO("LiDAR subscribers initialized");
+    ROS_INFO("Forward LiDAR subscriber initialized");
+    
+    // Initialize LiDAR distance variables
+    forward_lidar_distance = 10.0;  // Default distance
+    left_lidar_distance = 10.0;     // Keep for compatibility
+    right_lidar_distance = 10.0;    // Keep for compatibility
     
     // Initialize keyboard subscriber
     ROS_INFO("Initializing keyboard subscriber...");
@@ -1254,33 +1257,90 @@ void BLUEROV2_DOB::UKF() {
 
 // Trajectory visualization functions
 void BLUEROV2_DOB::update_trajectory() {
-    // Create a new pose stamped message
+    // Create pose stamped message for current position
     geometry_msgs::PoseStamped pose_stamped;
     pose_stamped.header.frame_id = "odom_frame";
     pose_stamped.header.stamp = ros::Time::now();
     
-    // Set position
     pose_stamped.pose.position.x = local_pos.x;
     pose_stamped.pose.position.y = local_pos.y;
     pose_stamped.pose.position.z = local_pos.z;
     
-    // Set orientation
-    pose_stamped.pose.orientation = rpy2q(local_euler);
+    // Convert euler angles to quaternion
+    tf2::Quaternion quat;
+    quat.setRPY(local_euler.phi, local_euler.theta, local_euler.psi);
+    pose_stamped.pose.orientation.x = quat.x();
+    pose_stamped.pose.orientation.y = quat.y();
+    pose_stamped.pose.orientation.z = quat.z();
+    pose_stamped.pose.orientation.w = quat.w();
     
     // Add to trajectory points
     trajectory_points.push_back(pose_stamped);
     
-    // Limit the number of points to prevent memory issues
+    // Keep only last 1000 points to avoid memory issues
     if (trajectory_points.size() > max_trajectory_points) {
         trajectory_points.erase(trajectory_points.begin());
     }
     
     // Debug: Print trajectory info every 100 points
-    static int debug_counter = 0;
-    debug_counter++;
-    if (debug_counter % 100 == 0) {
-        ROS_INFO("Trajectory points: %zu, Current position: (%.2f, %.2f, %.2f)", 
+    if (trajectory_points.size() % 100 == 0) {
+        ROS_INFO("Trajectory points: %zu, Current position: (%.2f, %.2f, %.2f)",
                  trajectory_points.size(), local_pos.x, local_pos.y, local_pos.z);
+        
+        // Calculate straightness if we have enough points
+        if (trajectory_points.size() > 10) {
+            calculate_trajectory_straightness();
+        }
+    }
+}
+
+void BLUEROV2_DOB::calculate_trajectory_straightness() {
+    // Calculate how straight the trajectory is
+    if (trajectory_points.size() < 10) return;
+    
+    // Get start and end points
+    auto start_point = trajectory_points.front();
+    auto end_point = trajectory_points.back();
+    
+    // Calculate ideal straight line distance
+    double ideal_distance = sqrt(pow(end_point.pose.position.x - start_point.pose.position.x, 2) +
+                                pow(end_point.pose.position.y - start_point.pose.position.y, 2) +
+                                pow(end_point.pose.position.z - start_point.pose.position.z, 2));
+    
+    // Calculate actual trajectory distance
+    double actual_distance = 0.0;
+    for (size_t i = 1; i < trajectory_points.size(); i++) {
+        auto prev = trajectory_points[i-1];
+        auto curr = trajectory_points[i];
+        actual_distance += sqrt(pow(curr.pose.position.x - prev.pose.position.x, 2) +
+                              pow(curr.pose.position.y - prev.pose.position.y, 2) +
+                              pow(curr.pose.position.z - prev.pose.position.z, 2));
+    }
+    
+    // Calculate straightness ratio (1.0 = perfectly straight)
+    double straightness = ideal_distance / actual_distance;
+    
+    // Calculate lateral deviation from straight line
+    double max_lateral_deviation = 0.0;
+    for (const auto& point : trajectory_points) {
+        double lateral_deviation = abs(point.pose.position.y);  // Distance from x-axis
+        if (lateral_deviation > max_lateral_deviation) {
+            max_lateral_deviation = lateral_deviation;
+        }
+    }
+    
+    ROS_INFO("Trajectory Analysis - Straightness: %.3f, Max lateral deviation: %.2fm", 
+             straightness, max_lateral_deviation);
+    
+    // Provide feedback on trajectory quality
+    if (straightness > 0.95) {
+        ROS_INFO("Excellent straight line performance!");
+    } else if (straightness > 0.9) {
+        ROS_INFO("Good straight line performance");
+    } else if (straightness > 0.8) {
+        ROS_WARN("Moderate straight line performance - some deviation detected");
+    } else {
+        ROS_WARN("Poor straight line performance - significant deviation detected");
     }
 }
 
@@ -1510,34 +1570,6 @@ MatrixXd BLUEROV2_DOB::dynamics_g(MatrixXd euler)
 }
 
 // LiDAR callback functions
-void BLUEROV2_DOB::left_lidar_cb(const sensor_msgs::LaserScan::ConstPtr& scan) {
-    fault_detection.last_lidar_time = ros::Time::now();
-    
-    // Find minimum distance
-    float min_distance = scan->range_max;
-    for (int i = 0; i < scan->ranges.size(); i++) {
-        if (scan->ranges[i] < min_distance && scan->ranges[i] > scan->range_min) {
-            min_distance = scan->ranges[i];
-        }
-    }
-    
-    left_lidar_distance = min_distance;
-}
-
-void BLUEROV2_DOB::right_lidar_cb(const sensor_msgs::LaserScan::ConstPtr& scan) {
-    fault_detection.last_lidar_time = ros::Time::now();
-    
-    // Find minimum distance
-    float min_distance = scan->range_max;
-    for (int i = 0; i < scan->ranges.size(); i++) {
-        if (scan->ranges[i] < min_distance && scan->ranges[i] > scan->range_min) {
-            min_distance = scan->ranges[i];
-        }
-    }
-    
-    right_lidar_distance = min_distance;
-}
-
 void BLUEROV2_DOB::forward_lidar_cb(const sensor_msgs::LaserScan::ConstPtr& scan) {
     fault_detection.last_lidar_time = ros::Time::now();
     
@@ -1617,37 +1649,81 @@ void BLUEROV2_DOB::velocity_control() {
 }
 
 void BLUEROV2_DOB::path_correction() {
-    // Calculate lateral error from LiDAR data
-    double avg_side_distance = (left_lidar_distance + right_lidar_distance) / 2.0;
-    lateral_error = target_side_distance - avg_side_distance;
+    // Use forward LiDAR for obstacle detection and path correction
+    double obstacle_distance = forward_lidar_distance;
+    double safe_distance = 5.0;  // Safe distance from obstacles
     
-    // Apply lateral correction
-    double lateral_correction = lateral_error * lateral_kp;
+    // If obstacle is too close, reduce forward velocity
+    if (obstacle_distance < safe_distance) {
+        double velocity_reduction = (safe_distance - obstacle_distance) / safe_distance;
+        acados_out.u0[0] *= (1.0 - velocity_reduction * 0.5);  // Reduce forward thrust
+        ROS_WARN("Obstacle detected at %.2f m, reducing velocity", obstacle_distance);
+    }
+    
+    // Simple lateral correction based on current position
+    // Keep robot moving in a straight line along x-axis
+    double lateral_error = local_pos.y;  // Distance from x-axis
+    double lateral_correction = -lateral_error * 0.3;  // Proportional correction
     acados_out.u0[1] += lateral_correction;
+    
+    ROS_INFO("Path correction: obstacle=%.2fm, lateral_error=%.2fm, correction=%.3f", 
+             obstacle_distance, lateral_error, lateral_correction);
 }
 
 void BLUEROV2_DOB::generate_straight_line_trajectory() {
-    // Use current pose instead of estimated pose for safety
+    // Use current pose for trajectory generation
     double current_x = local_pos.x;
     double current_y = local_pos.y;
     double current_z = local_pos.z;
+    double current_psi = local_euler.psi;
     
     // Calculate target position (move forward along x-axis)
-    double target_x = current_x + 10.0;  // Move 10 meters forward
-    double target_y = target_side_distance;  // Maintain lateral position
-    double target_z = target_depth;         // Maintain depth
+    double target_x = current_x + 20.0;  // Move 20 meters forward
+    double target_y = 0.0;               // Stay on x-axis (straight line)
+    double target_z = target_depth;       // Maintain target depth
+    double target_psi = 0.0;             // Keep heading straight
     
-    // Generate trajectory points
+    ROS_INFO("Generating straight line trajectory: (%.2f,%.2f,%.2f) -> (%.2f,%.2f,%.2f)", 
+             current_x, current_y, current_z, target_x, target_y, target_z);
+    
+    // Generate trajectory points with smooth interpolation
     for (int i = 0; i <= BLUEROV2_N; i++) {
         double progress = (double)i / BLUEROV2_N;
         
-        acados_in.yref[i][0] = current_x + progress * (target_x - current_x);
-        acados_in.yref[i][1] = target_y;
-        acados_in.yref[i][2] = target_z;
-        acados_in.yref[i][3] = 0;  // roll
-        acados_in.yref[i][4] = 0;  // pitch
-        acados_in.yref[i][5] = 0;  // yaw (maintain heading)
+        // Use smooth interpolation for better trajectory
+        double smooth_progress = 1.0 / (1.0 + exp(-8.0 * (progress - 0.5)));
+        
+        // Interpolate position
+        acados_in.yref[i][0] = current_x + (target_x - current_x) * smooth_progress;  // x
+        acados_in.yref[i][1] = current_y + (target_y - current_y) * smooth_progress;  // y
+        acados_in.yref[i][2] = current_z + (target_z - current_z) * smooth_progress;  // z
+        
+        // Interpolate orientation
+        double psi_diff = target_psi - current_psi;
+        // Normalize angle difference
+        while (psi_diff > M_PI) psi_diff -= 2 * M_PI;
+        while (psi_diff < -M_PI) psi_diff += 2 * M_PI;
+        
+        acados_in.yref[i][3] = 0.0;  // roll - keep level
+        acados_in.yref[i][4] = 0.0;  // pitch - keep level
+        acados_in.yref[i][5] = current_psi + psi_diff * smooth_progress;  // yaw
+        
+        // Set velocities for smooth motion
+        double velocity_x = (target_x - current_x) / 20.0;  // Average velocity
+        acados_in.yref[i][6] = velocity_x;   // u - forward velocity
+        acados_in.yref[i][7] = 0.0;          // v - no lateral velocity
+        acados_in.yref[i][8] = 0.0;          // w - no vertical velocity
+        acados_in.yref[i][9] = 0.0;          // p - no roll rate
+        acados_in.yref[i][10] = 0.0;         // q - no pitch rate
+        acados_in.yref[i][11] = 0.0;         // r - no yaw rate
+        
+        // Set disturbance estimates to zero
+        for (int j = 12; j < 18; j++) {
+            acados_in.yref[i][j] = 0.0;
+        }
     }
+    
+    ROS_INFO("Straight line trajectory generated successfully");
 }
 
 // Sensor fusion functions
@@ -1748,7 +1824,7 @@ void BLUEROV2_DOB::keyboard_cb(const std_msgs::String::ConstPtr& msg) {
 
 void BLUEROV2_DOB::start_straight_line_navigation() {
     straight_line_mode = true;
-    ROS_INFO("Starting straight line navigation");
+    ROS_INFO("=== STARTING STRAIGHT LINE NAVIGATION ===");
     
     // Check if we have received pose data
     if (!is_start) {
@@ -1757,22 +1833,56 @@ void BLUEROV2_DOB::start_straight_line_navigation() {
     }
     
     ROS_INFO("Current position: x=%.2f, y=%.2f, z=%.2f", local_pos.x, local_pos.y, local_pos.z);
+    ROS_INFO("Current orientation: phi=%.2f, theta=%.2f, psi=%.2f", 
+             local_euler.phi, local_euler.theta, local_euler.psi);
     
-    // Set initial target position
-    target_side_distance = 5.0;  // 5 meters from side wall
+    // Set navigation parameters
     target_depth = local_pos.z;  // Maintain current depth
-    target_surge_velocity = 0.5; // 0.5 m/s forward velocity
+    target_surge_velocity = 0.8; // 0.8 m/s forward velocity (moderate speed)
     
-    ROS_INFO("Target depth: %.2f, Target velocity: %.2f", target_depth, target_surge_velocity);
+    // Clear previous trajectory for fresh start
+    trajectory_points.clear();
+    
+    ROS_INFO("Navigation parameters set:");
+    ROS_INFO("- Target depth: %.2f m", target_depth);
+    ROS_INFO("- Target velocity: %.2f m/s", target_surge_velocity);
+    ROS_INFO("- Forward LiDAR enabled for obstacle detection");
+    ROS_INFO("- Trajectory visualization enabled");
+    
+    ROS_INFO("Press 'e' to stop navigation");
+    ROS_INFO("=== STRAIGHT LINE NAVIGATION STARTED ===");
 }
 
 void BLUEROV2_DOB::stop_straight_line_navigation() {
     straight_line_mode = false;
-    ROS_INFO("Stopping straight line navigation");
+    ROS_INFO("=== STOPPING STRAIGHT LINE NAVIGATION ===");
+    
+    // Calculate final trajectory statistics
+    if (trajectory_points.size() > 10) {
+        calculate_trajectory_straightness();
+        
+        // Calculate total distance traveled
+        double total_distance = 0.0;
+        for (size_t i = 1; i < trajectory_points.size(); i++) {
+            auto prev = trajectory_points[i-1];
+            auto curr = trajectory_points[i];
+            total_distance += sqrt(pow(curr.pose.position.x - prev.pose.position.x, 2) +
+                                 pow(curr.pose.position.y - prev.pose.position.y, 2) +
+                                 pow(curr.pose.position.z - prev.pose.position.z, 2));
+        }
+        
+        ROS_INFO("Navigation Summary:");
+        ROS_INFO("- Total distance traveled: %.2f m", total_distance);
+        ROS_INFO("- Trajectory points recorded: %zu", trajectory_points.size());
+        ROS_INFO("- Final position: (%.2f, %.2f, %.2f)", 
+                 local_pos.x, local_pos.y, local_pos.z);
+    }
     
     // Reset control inputs
     for (int i = 0; i < BLUEROV2_NU; i++) {
         acados_out.u0[i] = 0.0;
     }
+    
+    ROS_INFO("=== STRAIGHT LINE NAVIGATION STOPPED ===");
 }
 
