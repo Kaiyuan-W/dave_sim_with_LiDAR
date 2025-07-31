@@ -493,9 +493,34 @@ void BLUEROV2_DOB::solve(){
     ROS_INFO("Calling acados solver...");
     acados_status = bluerov2_acados_solve(mpc_capsule);
     ROS_INFO("Acados solver completed with status: %d", acados_status);
+    
+    // Add detailed status information
+    if (acados_status == 0) {
+        ROS_INFO("ACADOS: SUCCESS");
+    } else if (acados_status == 1) {
+        ROS_WARN("ACADOS: Maximum number of iterations reached");
+    } else if (acados_status == 2) {
+        ROS_WARN("ACADOS: Minimum step size reached");
+    } else if (acados_status == 3) {
+        ROS_WARN("ACADOS: Maximum CPU time reached");
+    } else if (acados_status == 4) {
+        ROS_ERROR("ACADOS: QP solver failed");
+    } else if (acados_status == 5) {
+        ROS_ERROR("ACADOS: Hessian matrix not positive definite");
+    } else if (acados_status == 6) {
+        ROS_ERROR("ACADOS: Invalid arguments");
+    } else {
+        ROS_ERROR("ACADOS: Unknown error status: %d", acados_status);
+    }
 
     if (acados_status != 0){
         ROS_INFO_STREAM("acados returned status " << acados_status << std::endl);
+    }
+    
+    // Debug: Print control outputs
+    ROS_INFO("Control outputs:");
+    for (int i = 0; i < 6; i++) {
+        ROS_INFO("Thruster %d: %.6f", i, acados_out.u0[i]);
     }
 
     acados_out.status = acados_status;
