@@ -395,8 +395,19 @@ void BLUEROV2_DOB::solve(){
     acados_in.x0[r] = v_angular_body[2];
     
     ROS_INFO("Initial states set successfully");
+    ROS_INFO("Setting constraint bounds...");
+    ROS_INFO("mpc_capsule pointer: %p", (void*)mpc_capsule);
+    if (mpc_capsule == nullptr) {
+        ROS_ERROR("mpc_capsule is null!");
+        return;
+    }
+    ROS_INFO("nlp_config pointer: %p", (void*)mpc_capsule->nlp_config);
+    ROS_INFO("nlp_dims pointer: %p", (void*)mpc_capsule->nlp_dims);
+    ROS_INFO("nlp_in pointer: %p", (void*)mpc_capsule->nlp_in);
     ocp_nlp_constraints_model_set(mpc_capsule->nlp_config,mpc_capsule->nlp_dims,mpc_capsule->nlp_in, 0, "lbx", acados_in.x0);
+    ROS_INFO("Lower bounds set successfully");
     ocp_nlp_constraints_model_set(mpc_capsule->nlp_config,mpc_capsule->nlp_dims,mpc_capsule->nlp_in, 0, "ubx", acados_in.x0);
+    ROS_INFO("Upper bounds set successfully");
 
     // set parameters
     for (int i = 0; i < BLUEROV2_N+1; i++)
