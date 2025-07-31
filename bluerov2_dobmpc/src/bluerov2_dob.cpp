@@ -409,11 +409,17 @@ void BLUEROV2_DOB::solve(){
     ROS_INFO("Lower bounds set successfully");
     ocp_nlp_constraints_model_set(mpc_capsule->nlp_config,mpc_capsule->nlp_dims,mpc_capsule->nlp_in, 0, "ubx", acados_in.x0);
     ROS_INFO("Upper bounds set successfully");
-
+    ROS_INFO("Starting parameter setup...");
+    ROS_INFO("BLUEROV2_N = %d", BLUEROV2_N);
+    ROS_INFO("COMPENSATE_D = %s", COMPENSATE_D ? "true" : "false");
+    
     // set parameters
     for (int i = 0; i < BLUEROV2_N+1; i++)
     {
+        ROS_INFO("Setting parameters for step %d", i);
+        
         if(COMPENSATE_D == false){
+            ROS_INFO("Using disturbance compensation (false)");
             acados_param[i][0] = solver_param.disturbance_x;
             acados_param[i][1] = solver_param.disturbance_y;
             acados_param[i][2] = solver_param.disturbance_z;
@@ -422,6 +428,7 @@ void BLUEROV2_DOB::solve(){
             acados_param[i][5] = solver_param.disturbance_psi;
         }
         else if(COMPENSATE_D == true){
+            ROS_INFO("Using disturbance compensation (true)");
             acados_param[i][0] = esti_x(12)/rotor_constant;
             acados_param[i][1] = esti_x(13)/rotor_constant;
             acados_param[i][2] = esti_x(14)/rotor_constant;
@@ -436,7 +443,10 @@ void BLUEROV2_DOB::solve(){
             // acados_param[i][4] = solver_param.disturbance_theta;
             // acados_param[i][5] = esti_x(17)/rotor_constant;
         }
+        
+        ROS_INFO("Calling bluerov2_acados_update_params for step %d", i);
         bluerov2_acados_update_params(mpc_capsule,i,acados_param[i],BLUEROV2_NP);
+        ROS_INFO("Parameters updated for step %d", i);
     }
 
     // change into form of (-pi, pi)
