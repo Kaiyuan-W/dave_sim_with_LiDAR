@@ -269,6 +269,10 @@ int BLUEROV2_DOB::readDataFromFile(const char* fileName, std::vector<std::vector
 }
 void BLUEROV2_DOB::ref_cb(int line_to_read)
 {
+    ROS_INFO("ref_cb called with line_to_read: %d", line_to_read);
+    ROS_INFO("number_of_steps: %d", number_of_steps);
+    ROS_INFO("BLUEROV2_N: %d", BLUEROV2_N);
+    
     if (BLUEROV2_N+line_to_read+1 <= number_of_steps)  // All ref points within the file
     {
         for (unsigned int i = 0; i <= BLUEROV2_N; i++)  // Fill all horizon with file data
@@ -465,7 +469,9 @@ void BLUEROV2_DOB::solve(){
 
     // set reference
     ROS_INFO("Setting reference trajectory...");
-    ref_cb(line_number); 
+    ROS_INFO("Calling ref_cb with line_number: %d", line_number);
+    ref_cb(line_number);
+    ROS_INFO("ref_cb completed successfully"); 
     line_number++;
     for (unsigned int i = 0; i <= BLUEROV2_N; i++){
         ocp_nlp_cost_model_set(mpc_capsule->nlp_config, mpc_capsule->nlp_dims, mpc_capsule->nlp_in, i, "yref", acados_in.yref[i]);
