@@ -1398,38 +1398,3 @@ void BLUEROV2_DOB::stop_straight_line_navigation() {
     }
 }
 
-// Trajectory visualization functions
-void BLUEROV2_DOB::update_trajectory() {
-    // Create a new pose stamped message
-    geometry_msgs::PoseStamped pose_stamped;
-    pose_stamped.header.frame_id = "odom_frame";
-    pose_stamped.header.stamp = ros::Time::now();
-    pose_stamped.pose.position.x = local_pos.x;
-    pose_stamped.pose.position.y = local_pos.y;
-    pose_stamped.pose.position.z = local_pos.z;
-    
-    // Convert Euler angles to quaternion
-    tf2::Quaternion quat;
-    quat.setRPY(local_euler.phi, local_euler.theta, local_euler.psi);
-    geometry_msgs::Quaternion quat_msg;
-    tf2::convert(quat, quat_msg);
-    pose_stamped.pose.orientation = quat_msg;
-    
-    // Add to trajectory points
-    trajectory_points.push_back(pose_stamped);
-    
-    // Limit trajectory points to prevent memory issues
-    if (trajectory_points.size() > max_trajectory_points) {
-        trajectory_points.erase(trajectory_points.begin());
-    }
-    
-    // Update trajectory path
-    trajectory_path.poses = trajectory_points;
-    trajectory_path.header.stamp = ros::Time::now();
-}
-
-void BLUEROV2_DOB::publish_trajectory() {
-    if (trajectory_pub.getNumSubscribers() > 0) {
-        trajectory_pub.publish(trajectory_path);
-    }
-}
