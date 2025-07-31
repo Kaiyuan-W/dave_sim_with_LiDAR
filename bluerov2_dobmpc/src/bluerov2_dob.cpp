@@ -320,6 +320,13 @@ void BLUEROV2_DOB::ref_cb(int line_to_read)
 // input: current pose, reference, parameter
 // output: thrust<0-5>
 void BLUEROV2_DOB::solve(){
+    ROS_INFO("Starting solve function...");
+    
+    // Check if we have valid pose data
+    if (!is_start) {
+        ROS_WARN("Solve called before pose data received, skipping...");
+        return;
+    }
     // identify turning direction
     if (pre_yaw >= 0 && local_euler.psi >=0)
     {
@@ -356,12 +363,21 @@ void BLUEROV2_DOB::solve(){
     pre_yaw = local_euler.psi;
 
     // set initial states
+    ROS_INFO("Setting initial states...");
     acados_in.x0[x] = local_pos.x;
     acados_in.x0[y] = local_pos.y;
     acados_in.x0[z] = local_pos.z;
     acados_in.x0[phi] = local_euler.phi;
     acados_in.x0[theta] = local_euler.theta;
     acados_in.x0[psi] = yaw_sum;
+    
+    // Check velocity data validity
+    if (v_linear_body.size() < 3 || v_angular_body.size() < 3) {
+        ROS_WARN("Velocity data not available, using zeros");
+        v_linear_body = Vector3d::Zero();
+        v_angular_body = Vector3d::Zero();
+    }
+    
     acados_in.x0[u] = v_linear_body[0];
     acados_in.x0[v] = v_linear_body[1];
     acados_in.x0[w] = v_linear_body[2];
@@ -417,7 +433,9 @@ void BLUEROV2_DOB::solve(){
     }
 
     // Solve OCP
+    ROS_INFO("Calling acados solver...");
     acados_status = bluerov2_acados_solve(mpc_capsule);
+    ROS_INFO("Acados solver completed with status: %d", acados_status);
 
     if (acados_status != 0){
         ROS_INFO_STREAM("acados returned status " << acados_status << std::endl);
