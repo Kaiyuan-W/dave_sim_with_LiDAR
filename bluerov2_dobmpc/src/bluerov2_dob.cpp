@@ -448,8 +448,11 @@ void BLUEROV2_DOB::solve(){
         bluerov2_acados_update_params(mpc_capsule,i,acados_param[i],BLUEROV2_NP);
         ROS_INFO("Parameters updated for step %d", i);
     }
-
+    
+    ROS_INFO("Parameter setup completed successfully");
+    
     // change into form of (-pi, pi)
+    ROS_INFO("Processing yaw reference...");
     if(sin(acados_in.yref[0][5]) >= 0)
     {
         yaw_ref = fmod(acados_in.yref[0][5],M_PI);
@@ -457,13 +460,17 @@ void BLUEROV2_DOB::solve(){
     else{
         yaw_ref = -M_PI + fmod(acados_in.yref[0][5],M_PI);
     }
+    
+    ROS_INFO("Yaw reference processed: %.2f", yaw_ref);
 
     // set reference
+    ROS_INFO("Setting reference trajectory...");
     ref_cb(line_number); 
     line_number++;
     for (unsigned int i = 0; i <= BLUEROV2_N; i++){
         ocp_nlp_cost_model_set(mpc_capsule->nlp_config, mpc_capsule->nlp_dims, mpc_capsule->nlp_in, i, "yref", acados_in.yref[i]);
     }
+    ROS_INFO("Reference trajectory set successfully");
 
     // Solve OCP
     ROS_INFO("Calling acados solver...");
