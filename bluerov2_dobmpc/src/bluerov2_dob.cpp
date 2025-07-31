@@ -328,6 +328,8 @@ void BLUEROV2_DOB::solve(){
         return;
     }
     // identify turning direction
+    yaw_diff = 0.0;  // Initialize yaw_diff
+    
     if (pre_yaw >= 0 && local_euler.psi >=0)
     {
         yaw_diff = local_euler.psi - pre_yaw;
@@ -364,6 +366,10 @@ void BLUEROV2_DOB::solve(){
 
     // set initial states
     ROS_INFO("Setting initial states...");
+    ROS_INFO("Position: x=%.2f, y=%.2f, z=%.2f", local_pos.x, local_pos.y, local_pos.z);
+    ROS_INFO("Euler angles: phi=%.2f, theta=%.2f, psi=%.2f", local_euler.phi, local_euler.theta, local_euler.psi);
+    ROS_INFO("Yaw sum: %.2f", yaw_sum);
+    
     acados_in.x0[x] = local_pos.x;
     acados_in.x0[y] = local_pos.y;
     acados_in.x0[z] = local_pos.z;
@@ -378,12 +384,17 @@ void BLUEROV2_DOB::solve(){
         v_angular_body = Vector3d::Zero();
     }
     
+    ROS_INFO("Linear velocity: u=%.2f, v=%.2f, w=%.2f", v_linear_body[0], v_linear_body[1], v_linear_body[2]);
+    ROS_INFO("Angular velocity: p=%.2f, q=%.2f, r=%.2f", v_angular_body[0], v_angular_body[1], v_angular_body[2]);
+    
     acados_in.x0[u] = v_linear_body[0];
     acados_in.x0[v] = v_linear_body[1];
     acados_in.x0[w] = v_linear_body[2];
     acados_in.x0[p] = v_angular_body[0];
     acados_in.x0[q] = v_angular_body[1];
     acados_in.x0[r] = v_angular_body[2];
+    
+    ROS_INFO("Initial states set successfully");
     ocp_nlp_constraints_model_set(mpc_capsule->nlp_config,mpc_capsule->nlp_dims,mpc_capsule->nlp_in, 0, "lbx", acados_in.x0);
     ocp_nlp_constraints_model_set(mpc_capsule->nlp_config,mpc_capsule->nlp_dims,mpc_capsule->nlp_in, 0, "ubx", acados_in.x0);
 
