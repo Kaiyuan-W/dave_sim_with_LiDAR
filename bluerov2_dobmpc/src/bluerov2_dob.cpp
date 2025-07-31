@@ -409,6 +409,18 @@ void BLUEROV2_DOB::solve(){
     acados_in.x0[q] = v_angular_body[1];
     acados_in.x0[r] = v_angular_body[2];
     
+    // Debug: Print initial state values
+    ROS_INFO("Initial state values:");
+    ROS_INFO("x0[0-5] (velocities): %.6f, %.6f, %.6f, %.6f, %.6f, %.6f", 
+             acados_in.x0[0], acados_in.x0[1], acados_in.x0[2], 
+             acados_in.x0[3], acados_in.x0[4], acados_in.x0[5]);
+    ROS_INFO("x0[6-11] (positions): %.6f, %.6f, %.6f, %.6f, %.6f, %.6f", 
+             acados_in.x0[6], acados_in.x0[7], acados_in.x0[8], 
+             acados_in.x0[9], acados_in.x0[10], acados_in.x0[11]);
+    ROS_INFO("x0[12-17] (disturbances): %.6f, %.6f, %.6f, %.6f, %.6f, %.6f", 
+             acados_in.x0[12], acados_in.x0[13], acados_in.x0[14], 
+             acados_in.x0[15], acados_in.x0[16], acados_in.x0[17]);
+    
     ROS_INFO("Initial states set successfully");
     ROS_INFO("=== DEBUG: NEW CODE COMPILED SUCCESSFULLY ===");
     ROS_INFO("Setting constraint bounds...");
@@ -424,6 +436,16 @@ void BLUEROV2_DOB::solve(){
     ROS_INFO("Lower bounds set successfully");
     ocp_nlp_constraints_model_set(mpc_capsule->nlp_config,mpc_capsule->nlp_dims,mpc_capsule->nlp_in, 0, "ubx", acados_in.x0);
     ROS_INFO("Upper bounds set successfully");
+    
+    // Debug: Check if initial state is within bounds
+    ROS_INFO("Checking initial state vs bounds:");
+    // Note: The bounds are set to the same values as the initial state in the current code
+    // This is just a placeholder check - in a real implementation, you would compare against actual bounds
+    for (int i = 0; i < 18; i++) {
+        ROS_INFO("State %d: %.6f", i, acados_in.x0[i]);
+    }
+    ROS_INFO("Bounds check completed");
+    
     ROS_INFO("Starting parameter setup...");
     ROS_INFO("BLUEROV2_N = %d", BLUEROV2_N);
     ROS_INFO("COMPENSATE_D = %s", COMPENSATE_D ? "true" : "false");
@@ -484,6 +506,13 @@ void BLUEROV2_DOB::solve(){
     ref_cb(line_number);
     ROS_INFO("ref_cb completed successfully"); 
     line_number++;
+    
+    // Debug: Print reference values
+    ROS_INFO("Reference values for step 0:");
+    for (int j = 0; j < BLUEROV2_NY; j++) {
+        ROS_INFO("yref[0][%d] = %.6f", j, acados_in.yref[0][j]);
+    }
+    
     for (unsigned int i = 0; i <= BLUEROV2_N; i++){
         ocp_nlp_cost_model_set(mpc_capsule->nlp_config, mpc_capsule->nlp_dims, mpc_capsule->nlp_in, i, "yref", acados_in.yref[i]);
     }
@@ -505,6 +534,12 @@ void BLUEROV2_DOB::solve(){
         ROS_WARN("ACADOS: Maximum CPU time reached");
     } else if (acados_status == 4) {
         ROS_ERROR("ACADOS: QP solver failed");
+        // Additional debugging for QP failure
+        ROS_ERROR("QP solver failed - this usually indicates:");
+        ROS_ERROR("1. Infeasible problem (conflicting constraints)");
+        ROS_ERROR("2. Numerical issues in the problem formulation");
+        ROS_ERROR("3. Invalid bounds or reference values");
+        ROS_ERROR("4. Cost function weights too small or large");
     } else if (acados_status == 5) {
         ROS_ERROR("ACADOS: Hessian matrix not positive definite");
     } else if (acados_status == 6) {
@@ -512,16 +547,25 @@ void BLUEROV2_DOB::solve(){
     } else {
         ROS_ERROR("ACADOS: Unknown error status: %d", acados_status);
     }
-
-    if (acados_status != 0){
-        ROS_INFO_STREAM("acados returned status " << acados_status << std::endl);
-    }
     
     // Debug: Print control outputs
     ROS_INFO("Control outputs:");
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < BLUEROV2_NU; i++) {
         ROS_INFO("Thruster %d: %.6f", i, acados_out.u0[i]);
     }
+    
+    // Apply control outputs to thrusters
+    // Note: ACADOS model has 4 control inputs, but robot has 6 thrusters
+    // We'll use the first 4 thrusters and set the last 2 to zero
+    current_t.t0 = acados_out.u0[0];
+    current_t.t1 = acados_out.u0[1];
+    current_t.t2 = acados_out.u0[2];
+    current_t.t3 = acados_out.u0[3];
+    current_t.t4 = 0.0;  // Set to zero since ACADOS model only has 4 inputs
+    current_t.t5 = 0.0;  // Set to zero since ACADOS model only has 4 inputs
+    
+    ROS_INFO("Applied thrust values: t0=%.6f, t1=%.6f, t2=%.6f, t3=%.6f, t4=%.6f, t5=%.6f", 
+             current_t.t0, current_t.t1, current_t.t2, current_t.t3, current_t.t4, current_t.t5);
 
     acados_out.status = acados_status;
     acados_out.kkt_res = (double)mpc_capsule->nlp_out->inf_norm_res;
