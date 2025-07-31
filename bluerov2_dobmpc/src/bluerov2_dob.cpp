@@ -395,6 +395,7 @@ void BLUEROV2_DOB::solve(){
     acados_in.x0[r] = v_angular_body[2];
     
     ROS_INFO("Initial states set successfully");
+    ROS_INFO("=== DEBUG: NEW CODE COMPILED SUCCESSFULLY ===");
     ROS_INFO("Setting constraint bounds...");
     ROS_INFO("mpc_capsule pointer: %p", (void*)mpc_capsule);
     if (mpc_capsule == nullptr) {
