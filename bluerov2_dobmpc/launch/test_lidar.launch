@@ -1,0 +1,16 @@
+<launch>
+    <!-- Test LiDAR visualization in RViz -->
+    
+    <!-- Start RViz with LiDAR configuration -->
+    <node name="rviz" pkg="rviz" type="rviz" output="screen" args="-d $(find bluerov2_dobmpc)/rviz/bluerov2_lidar.rviz"/>
+    
+    <!-- Start LiDAR test node -->
+    <node name="lidar_test" pkg="bluerov2_dobmpc" type="test_lidar.py" output="screen"/>
+    
+    <!-- Display LiDAR topic info -->
+    <node name="rostopic_info" pkg="rostopic" type="rostopic" args="info /bluerov2/forward_lidar_forward" output="screen"/>
+    
+    <!-- Echo LiDAR data (optional, for debugging) -->
+    <node name="lidar_echo" pkg="rostopic" type="rostopic" args="echo /bluerov2/forward_lidar_forward" output="screen"/>
+    
+</launch>

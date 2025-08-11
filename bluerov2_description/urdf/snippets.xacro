@@ -229,9 +229,14 @@
           <stddev>${range_stddev}</stddev>
         </noise>
       </ray>
+      <!-- Enhanced visualization for LiDAR laser -->
+      <visualize_rays>true</visualize_rays>
+      <always_on>true</always_on>
       <plugin name="sonar${suffix}_controller" filename="libgazebo_ros_laser.so">
         <topicName>${topic}${suffix}</topicName>
         <frameName>sonar${suffix}_link</frameName>
+        <minIntensity>0.1</minIntensity>
+        <maxIntensity>1.0</maxIntensity>
       </plugin>
     </sensor>
   </gazebo>

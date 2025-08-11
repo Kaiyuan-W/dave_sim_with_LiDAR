@@ -59,6 +59,7 @@
       <geometry>
         <mesh filename="file://$(find bluerov2_description)/../Lidar/meshes/lidar_2d_v1.dae" scale="1 1 1"/>
       </geometry>
+      <material name="lidar_material"/>
     </visual>
   </xacro:bluerov2_sss>
 
