@@ -676,7 +676,19 @@ void BLUEROV2_DOB::solve(){
         ROS_WARN("Numerical issues detected, using fallback control");
         acados_status = 4;  // Force fallback control
     } else {
+        // Record start time for performance monitoring
+        ros::Time solve_start_time = ros::Time::now();
+        
         acados_status = bluerov2_acados_solve(mpc_capsule);
+        
+        // Calculate solve time
+        ros::Duration solve_time = ros::Time::now() - solve_start_time;
+        ROS_INFO("ACADOS solve completed in %.3f seconds", solve_time.toSec());
+        
+        // Performance monitoring
+        if (solve_time.toSec() > 0.1) {
+            ROS_WARN("ACADOS solve took %.3f seconds - this might indicate performance issues", solve_time.toSec());
+        }
     }
     
     // If first attempt fails, try with much more relaxed bounds
@@ -776,15 +788,29 @@ void BLUEROV2_DOB::solve(){
         double vel_error_y = acados_in.x0[1];
         double vel_error_z = acados_in.x0[2];
         
-        // Improved PD control with better gains and limits
-        double kp = 0.02;   // Reduced proportional gain for stability
-        double kd = 0.05;   // Reduced derivative gain for damping
-        double max_thrust = 0.2;  // Further reduced maximum thrust for safety
+        // Adaptive control gains based on error magnitude
+        double total_error = sqrt(pos_error_x*pos_error_x + pos_error_y*pos_error_y + pos_error_z*pos_error_z);
+        
+        // Reduce gains for large errors to prevent instability
+        double kp_base = 0.02;
+        double kd_base = 0.05;
+        double max_thrust = 0.2;
+        
+        if (total_error > 5.0) {
+            kp_base *= 0.5;  // Reduce gains for large errors
+            kd_base *= 0.5;
+            max_thrust *= 0.5;
+            ROS_WARN("Large error detected (%.3f), reducing control gains for stability", total_error);
+        } else if (total_error < 0.1) {
+            kp_base *= 1.5;  // Increase gains for small errors
+            kd_base *= 1.5;
+            ROS_INFO("Small error detected (%.3f), increasing control gains for precision", total_error);
+        }
         
         // Calculate control inputs based on position and velocity error
-        double thrust_x = -kp * pos_error_x - kd * vel_error_x;
-        double thrust_y = -kp * pos_error_y - kd * vel_error_y;
-        double thrust_z = -kp * pos_error_z - kd * vel_error_z;
+        double thrust_x = -kp_base * pos_error_x - kd_base * vel_error_x;
+        double thrust_y = -kp_base * pos_error_y - kd_base * vel_error_y;
+        double thrust_z = -kp_base * pos_error_z - kd_base * vel_error_z;
         
         // Limit thrust values
         thrust_x = std::max(-max_thrust, std::min(max_thrust, thrust_x));
@@ -803,15 +829,7 @@ void BLUEROV2_DOB::solve(){
                  thrust_x, thrust_y, thrust_z);
         ROS_INFO("Position errors: x=%.3f, y=%.3f, z=%.3f", pos_error_x, pos_error_y, pos_error_z);
         ROS_INFO("Velocity errors: x=%.3f, y=%.3f, z=%.3f", vel_error_x, vel_error_y, vel_error_z);
-        
-        // Additional safety check - if errors are too large, reduce thrust further
-        double total_error = sqrt(pos_error_x*pos_error_x + pos_error_y*pos_error_y + pos_error_z*pos_error_z);
-        if (total_error > 10.0) {
-            ROS_WARN("Large position error (%.3f), reducing thrust for safety", total_error);
-            current_t.t0 *= 0.5;
-            current_t.t1 *= 0.5;
-            current_t.t2 *= 0.5;
-        }
+        ROS_INFO("Total error: %.3f, using gains: kp=%.4f, kd=%.4f", total_error, kp_base, kd_base);
     }
     
     ROS_INFO("Applied thrust values: t0=%.6f, t1=%.6f, t2=%.6f, t3=%.6f, t4=%.6f, t5=%.6f", 
