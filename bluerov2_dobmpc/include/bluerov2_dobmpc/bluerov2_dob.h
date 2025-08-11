@@ -229,10 +229,10 @@ class BLUEROV2_DOB{
     
     // Sensor fusion weights
     struct SensorWeights {
-        double imu_weight = 0.4;
-        double pressure_weight = 0.25;
-        double gps_weight = 0.15;
-        double lidar_weight = 0.2;
+        double imu_weight = 0.35;        // Reduced from 0.4
+        double pressure_weight = 0.25;   // Keep same
+        double gps_weight = 0.20;        // Increased from 0.15
+        double lidar_weight = 0.20;      // Keep same for forward LiDAR
     } sensor_weights;
     
     // Straight line navigation parameters
@@ -376,10 +376,8 @@ class BLUEROV2_DOB{
 
     void pressure_cb(const sensor_msgs::FluidPressure::ConstPtr &pressure);
     void pcl_cb(const sensor_msgs::PointCloud2ConstPtr &cloud);
-    
-    // LiDAR callback functions
-    void left_lidar_cb(const sensor_msgs::LaserScan::ConstPtr& scan);
-    void right_lidar_cb(const sensor_msgs::LaserScan::ConstPtr& scan);
+
+    // LiDAR callbacks - only forward LiDAR for obstacle detection
     void forward_lidar_cb(const sensor_msgs::LaserScan::ConstPtr& scan);
     
     // Straight line navigation functions

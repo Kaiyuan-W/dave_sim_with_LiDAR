@@ -426,13 +426,6 @@ void BLUEROV2_DOB::solve(){
     ROS_INFO("Euler angles: phi=%.2f, theta=%.2f, psi=%.2f", local_euler.phi, local_euler.theta, local_euler.psi);
     ROS_INFO("Yaw sum: %.2f", yaw_sum);
     
-    acados_in.x0[x] = local_pos.x;
-    acados_in.x0[y] = local_pos.y;
-    acados_in.x0[z] = local_pos.z;
-    acados_in.x0[phi] = local_euler.phi;
-    acados_in.x0[theta] = local_euler.theta;
-    acados_in.x0[psi] = yaw_sum;
-    
     // Check velocity data validity
     if (v_linear_body.size() < 3 || v_angular_body.size() < 3) {
         ROS_WARN("Velocity data not available, using zeros");
@@ -443,28 +436,20 @@ void BLUEROV2_DOB::solve(){
     ROS_INFO("Linear velocity: u=%.2f, v=%.2f, w=%.2f", v_linear_body[0], v_linear_body[1], v_linear_body[2]);
     ROS_INFO("Angular velocity: p=%.2f, q=%.2f, r=%.2f", v_angular_body[0], v_angular_body[1], v_angular_body[2]);
     
-    acados_in.x0[u] = v_linear_body[0];
-    acados_in.x0[v] = v_linear_body[1];
-    acados_in.x0[w] = v_linear_body[2];
-    acados_in.x0[p] = v_angular_body[0];
-    acados_in.x0[q] = v_angular_body[1];
-    acados_in.x0[r] = v_angular_body[2];
-    
-    // Set initial state to match ACADOS constraints
-    // ACADOS expects state 2 (z position) to be constrained to -20
-    // Other states should be set to reasonable values
+    // Set initial state to match ACADOS model exactly
+    // ACADOS expects: [u, v, w, p, q, r, x, y, z, phi, theta, psi, dx, dy, dz, dphi, dtheta, dpsi]
     acados_in.x0[0] = v_linear_body[0];  // u
     acados_in.x0[1] = v_linear_body[1];  // v
-    acados_in.x0[2] = -20.0;             // w (constrained by ACADOS)
+    acados_in.x0[2] = v_linear_body[2];  // w
     acados_in.x0[3] = v_angular_body[0]; // p
     acados_in.x0[4] = v_angular_body[1]; // q
     acados_in.x0[5] = v_angular_body[2]; // r
     acados_in.x0[6] = local_pos.x;       // x
     acados_in.x0[7] = local_pos.y;       // y
-    acados_in.x0[8] = -20.0;             // z (constrained by ACADOS)
+    acados_in.x0[8] = local_pos.z;       // z
     acados_in.x0[9] = local_euler.phi;   // phi
     acados_in.x0[10] = local_euler.theta; // theta
-    acados_in.x0[11] = local_euler.psi;  // psi
+    acados_in.x0[11] = yaw_sum;          // psi (using yaw_sum for continuity)
     acados_in.x0[12] = 0.0;              // disturbance x
     acados_in.x0[13] = 0.0;              // disturbance y
     acados_in.x0[14] = 0.0;              // disturbance z
@@ -500,44 +485,44 @@ void BLUEROV2_DOB::solve(){
     double lbx[18], ubx[18];
     
     // Set lower bounds - allow reasonable ranges for all states
-    lbx[0] = -10.0;   // u velocity
-    lbx[1] = -10.0;   // v velocity  
-    lbx[2] = -20.0;   // w velocity (depth rate)
-    lbx[3] = -1.0;    // p angular velocity
-    lbx[4] = -1.0;    // q angular velocity
-    lbx[5] = -1.0;    // r angular velocity
-    lbx[6] = -100.0;  // x position
-    lbx[7] = -100.0;  // y position
-    lbx[8] = -100.0;  // z position (depth)
-    lbx[9] = -M_PI;   // phi (roll)
-    lbx[10] = -M_PI;  // theta (pitch)
-    lbx[11] = -M_PI;  // psi (yaw)
-    lbx[12] = -10.0;  // disturbance x
-    lbx[13] = -10.0;  // disturbance y
-    lbx[14] = -10.0;  // disturbance z
-    lbx[15] = -1.0;   // disturbance phi
-    lbx[16] = -1.0;   // disturbance theta
-    lbx[17] = -1.0;   // disturbance psi
+    lbx[0] = -5.0;    // u velocity (reduced from -10)
+    lbx[1] = -5.0;    // v velocity (reduced from -10)
+    lbx[2] = -5.0;    // w velocity (reduced from -20)
+    lbx[3] = -0.5;    // p angular velocity (reduced from -1)
+    lbx[4] = -0.5;    // q angular velocity (reduced from -1)
+    lbx[5] = -0.5;    // r angular velocity (reduced from -1)
+    lbx[6] = -50.0;   // x position (reduced from -100)
+    lbx[7] = -50.0;   // y position (reduced from -100)
+    lbx[8] = -100.0;  // z position (depth) - keep large range for underwater
+    lbx[9] = -M_PI/2; // phi (roll) - reduced from -M_PI
+    lbx[10] = -M_PI/2; // theta (pitch) - reduced from -M_PI
+    lbx[11] = -M_PI;   // psi (yaw) - keep full range for navigation
+    lbx[12] = -5.0;    // disturbance x (reduced from -10)
+    lbx[13] = -5.0;    // disturbance y (reduced from -10)
+    lbx[14] = -5.0;    // disturbance z (reduced from -10)
+    lbx[15] = -0.5;    // disturbance phi (reduced from -1)
+    lbx[16] = -0.5;    // disturbance theta (reduced from -1)
+    lbx[17] = -0.5;    // disturbance psi (reduced from -1)
     
     // Set upper bounds
-    ubx[0] = 10.0;    // u velocity
-    ubx[1] = 10.0;    // v velocity
-    ubx[2] = 20.0;    // w velocity (depth rate)
-    ubx[3] = 1.0;     // p angular velocity
-    ubx[4] = 1.0;     // q angular velocity
-    ubx[5] = 1.0;     // r angular velocity
-    ubx[6] = 100.0;   // x position
-    ubx[7] = 100.0;   // y position
-    ubx[8] = 100.0;   // z position (depth)
-    ubx[9] = M_PI;    // phi (roll)
-    ubx[10] = M_PI;   // theta (pitch)
-    ubx[11] = M_PI;   // psi (yaw)
-    ubx[12] = 10.0;   // disturbance x
-    ubx[13] = 10.0;   // disturbance y
-    ubx[14] = 10.0;   // disturbance z
-    ubx[15] = 1.0;    // disturbance phi
-    ubx[16] = 1.0;    // disturbance theta
-    ubx[17] = 1.0;    // disturbance psi
+    ubx[0] = 5.0;     // u velocity (reduced from 10)
+    ubx[1] = 5.0;     // v velocity (reduced from 10)
+    ubx[2] = 5.0;     // w velocity (reduced from 20)
+    ubx[3] = 0.5;     // p angular velocity (reduced from 1)
+    ubx[4] = 0.5;     // q angular velocity (reduced from 1)
+    ubx[5] = 0.5;     // r angular velocity (reduced from 1)
+    ubx[6] = 50.0;    // x position (reduced from 100)
+    ubx[7] = 50.0;    // y position (reduced from 100)
+    ubx[8] = 100.0;   // z position (depth) - keep large range for underwater
+    ubx[9] = M_PI/2;  // phi (roll) - reduced from M_PI
+    ubx[10] = M_PI/2; // theta (pitch) - reduced from M_PI
+    ubx[11] = M_PI;   // psi (yaw) - keep full range for navigation
+    ubx[12] = 5.0;    // disturbance x (reduced from 10)
+    ubx[13] = 5.0;    // disturbance y (reduced from 10)
+    ubx[14] = 5.0;    // disturbance z (reduced from 10)
+    ubx[15] = 0.5;    // disturbance phi (reduced from 1)
+    ubx[16] = 0.5;    // disturbance theta (reduced from 1)
+    ubx[17] = 0.5;    // disturbance psi (reduced from 1)
     
     // Set the bounds in ACADOS
     ocp_nlp_constraints_model_set(mpc_capsule->nlp_config,mpc_capsule->nlp_dims,mpc_capsule->nlp_in, 0, "lbx", lbx);
@@ -1345,12 +1330,24 @@ void BLUEROV2_DOB::calculate_trajectory_straightness() {
 }
 
 void BLUEROV2_DOB::publish_trajectory() {
-    // Update trajectory path
-    trajectory_path.header.stamp = ros::Time::now();
-    trajectory_path.poses = trajectory_points;
+    if (trajectory_points.empty()) return;
     
-    // Publish trajectory
+    nav_msgs::Path trajectory_path;
+    trajectory_path.header.stamp = ros::Time::now();
+    trajectory_path.header.frame_id = "odom_frame";
+    
+    // Add all recorded trajectory points
+    for (const auto& pose : trajectory_points) {
+        trajectory_path.poses.push_back(pose);
+    }
+    
+    // Publish trajectory for RViz visualization
     trajectory_pub.publish(trajectory_path);
+    
+    // Limit trajectory size to prevent memory issues
+    if (trajectory_points.size() > 1000) {
+        trajectory_points.erase(trajectory_points.begin(), trajectory_points.begin() + 100);
+    }
 }
 
 // Define function to compute Jacobian of system dynamics at current state and input
@@ -1596,6 +1593,27 @@ void BLUEROV2_DOB::straight_line_navigation() {
     
     ROS_INFO("Straight line navigation active - Position: x=%.2f, y=%.2f, z=%.2f", 
              local_pos.x, local_pos.y, local_pos.z);
+    
+    // Record current position for trajectory visualization
+    geometry_msgs::PoseStamped current_pose;
+    current_pose.header.stamp = ros::Time::now();
+    current_pose.header.frame_id = "odom_frame";
+    current_pose.pose.position.x = local_pos.x;
+    current_pose.pose.position.y = local_pos.y;
+    current_pose.pose.position.z = local_pos.z;
+    
+    // Convert Euler angles to quaternion
+    tf2::Quaternion quat;
+    quat.setRPY(local_euler.phi, local_euler.theta, local_euler.psi);
+    current_pose.pose.orientation.x = quat.x();
+    current_pose.pose.orientation.y = quat.y();
+    current_pose.pose.orientation.z = quat.z();
+    current_pose.pose.orientation.w = quat.w();
+    
+    trajectory_points.push_back(current_pose);
+    
+    // Publish trajectory for RViz visualization
+    publish_trajectory();
     
     // Update sensor timeouts
     update_sensor_timeouts();

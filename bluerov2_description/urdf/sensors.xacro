@@ -39,53 +39,7 @@
   <xacro:default_gps namespace="${namespace}" parent_link="${namespace}/base_link" />
 
   <!-- Mount LiDAR sensors for straight line navigation -->
-  <!-- Left side LiDAR -->
-  <xacro:bluerov2_sss 
-    namespace="${namespace}" 
-    parent_link="${namespace}/base_link" 
-    topic="left_lidar_" 
-    suffix="left"
-    mass="0.001"
-    update_rate="20"
-    samples="180"
-    fov="3.14"
-    range_min="0.1"
-    range_max="20.0"
-    range_stddev="0.01"
-    mesh="file://$(find bluerov2_description)/meshes/ping1d.dae">
-    <inertia ixx="0.00001" ixy="0.0" ixz="0.0" iyy="0.00001" iyz="0.0" izz="0.00001" />
-    <origin xyz="0 0.15 0" rpy="0 0 1.5708"/>
-    <visual>
-      <geometry>
-        <mesh filename="file://$(find bluerov2_description)/../Lidar/meshes/lidar_2d_v1.dae" scale="1 1 1"/>
-      </geometry>
-    </visual>
-  </xacro:bluerov2_sss>
-
-  <!-- Right side LiDAR -->
-  <xacro:bluerov2_sss 
-    namespace="${namespace}" 
-    parent_link="${namespace}/base_link" 
-    topic="right_lidar_" 
-    suffix="right"
-    mass="0.001"
-    update_rate="20"
-    samples="180"
-    fov="3.14"
-    range_min="0.1"
-    range_max="20.0"
-    range_stddev="0.01"
-    mesh="file://$(find bluerov2_description)/meshes/ping1d.dae">
-    <inertia ixx="0.00001" ixy="0.0" ixz="0.0" iyy="0.00001" iyz="0.0" izz="0.00001" />
-    <origin xyz="0 -0.15 0" rpy="0 0 -1.5708"/>
-    <visual>
-      <geometry>
-        <mesh filename="file://$(find bluerov2_description)/../Lidar/meshes/lidar_2d_v1.dae" scale="1 1 1"/>
-      </geometry>
-    </visual>
-  </xacro:bluerov2_sss>
-
-  <!-- Forward LiDAR for obstacle detection -->
+  <!-- Forward LiDAR for obstacle detection and navigation -->
   <xacro:bluerov2_sss 
     namespace="${namespace}" 
     parent_link="${namespace}/base_link" 
