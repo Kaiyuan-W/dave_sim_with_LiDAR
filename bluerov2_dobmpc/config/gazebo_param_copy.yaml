@@ -8,3 +8,10 @@ applied_forcey: /root/uuv_ws/src/dave_sim/bluerov2/bluerov2_dobmpc/config/forcey
 applied_forcez: /root/uuv_ws/src/dave_sim/bluerov2/bluerov2_dobmpc/config/forcez.txt
 applied_torquez: /root/uuv_ws/src/dave_sim/bluerov2/bluerov2_dobmpc/config/torquez.txt
 yaml_name: /config/gazebo_param_copy.yaml
+
+# Target position parameters for reference trajectory generation
+# These will be used if no ROS parameters are set
+target_x: 15.0  # Target x position (5m forward from initial position 10)
+target_y: 20.0  # Target y position (same as initial)
+target_z: -95.0 # Target depth (same as initial)
+target_psi: -3.14159  # Target yaw (same as initial, facing negative x)

@@ -299,24 +299,30 @@ void BLUEROV2_DOB::generate_dynamic_reference_trajectory()
     ROS_INFO("Current robot position: x=%.3f, y=%.3f, z=%.3f, psi=%.3f", 
              current_x, current_y, current_z, current_psi);
     
-    // Define target position (this could be configurable or come from a mission planner)
-    double target_x = 0.0;  // Target x position
-    double target_y = 0.0;  // Target y position  
-    double target_z = -5.0; // Target depth (5m below surface)
-    double target_psi = 0.0; // Target yaw angle
+    // Define target position - use more reasonable targets to avoid large errors
+    // For initial testing, use targets close to current position
+    double target_x = current_x + 5.0;  // Move 5m forward from current position
+    double target_y = current_y;        // Stay at current y position (straight line)
+    double target_z = current_z;        // Maintain current depth
+    double target_psi = current_psi;    // Maintain current heading
     
-    // Try to get target from ROS parameters, otherwise use defaults
+    // Try to get target from ROS parameters, otherwise use reasonable defaults
     if (!ros::param::get("/bluerov2_dob_node/target_x", target_x)) {
-        ROS_INFO("Using default target_x: %.3f", target_x);
+        // If no parameter set, use a reasonable offset from current position
+        target_x = current_x + 5.0;  // 5m forward
+        ROS_INFO("Using reasonable target_x: %.3f (%.3f + 5.0)", target_x, current_x);
     }
     if (!ros::param::get("/bluerov2_dob_node/target_y", target_y)) {
-        ROS_INFO("Using default target_y: %.3f", target_y);
+        target_y = current_y;  // Stay at current y
+        ROS_INFO("Using reasonable target_y: %.3f (current position)", target_y);
     }
     if (!ros::param::get("/bluerov2_dob_node/target_z", target_z)) {
-        ROS_INFO("Using default target_z: %.3f", target_z);
+        target_z = current_z;  // Maintain current depth
+        ROS_INFO("Using reasonable target_z: %.3f (current depth)", target_z);
     }
     if (!ros::param::get("/bluerov2_dob_node/target_psi", target_psi)) {
-        ROS_INFO("Using default target_psi: %.3f", target_psi);
+        target_psi = current_psi;  // Maintain current heading
+        ROS_INFO("Using reasonable target_psi: %.3f (current heading)", target_psi);
     }
     
     // Calculate distance to target
@@ -325,6 +331,19 @@ void BLUEROV2_DOB::generate_dynamic_reference_trajectory()
                                    pow(target_z - current_z, 2));
     
     ROS_INFO("Distance to target: %.3f meters", distance_to_target);
+    
+    // Check if distance is reasonable for MPC solver
+    if (distance_to_target > 20.0) {
+        ROS_WARN("Target distance %.3f is too large, limiting to 20m for MPC stability", distance_to_target);
+        // Limit the target to a reasonable distance
+        double scale_factor = 20.0 / distance_to_target;
+        target_x = current_x + (target_x - current_x) * scale_factor;
+        target_y = current_y + (target_y - current_y) * scale_factor;
+        target_z = current_z + (target_z - current_z) * scale_factor;
+        distance_to_target = 20.0;
+        ROS_INFO("Adjusted target: (%.3f, %.3f, %.3f), new distance: %.3f", 
+                 target_x, target_y, target_z, distance_to_target);
+    }
     
     // Generate reference trajectory for the entire horizon
     for (unsigned int i = 0; i <= BLUEROV2_N; i++) {
@@ -757,10 +776,10 @@ void BLUEROV2_DOB::solve(){
         double vel_error_y = acados_in.x0[1];
         double vel_error_z = acados_in.x0[2];
         
-        // Simple PD control based on position and velocity error
-        double kp = 0.05;   // Proportional gain (reduced for stability)
-        double kd = 0.1;    // Derivative gain for damping
-        double max_thrust = 0.3;  // Reduced maximum thrust for safety
+        // Improved PD control with better gains and limits
+        double kp = 0.02;   // Reduced proportional gain for stability
+        double kd = 0.05;   // Reduced derivative gain for damping
+        double max_thrust = 0.2;  // Further reduced maximum thrust for safety
         
         // Calculate control inputs based on position and velocity error
         double thrust_x = -kp * pos_error_x - kd * vel_error_x;
@@ -772,7 +791,7 @@ void BLUEROV2_DOB::solve(){
         thrust_y = std::max(-max_thrust, std::min(max_thrust, thrust_y));
         thrust_z = std::max(-max_thrust, std::min(max_thrust, thrust_z));
         
-        // Apply fallback control
+        // Apply fallback control with better thruster mapping
         current_t.t0 = thrust_x;  // Forward/backward
         current_t.t1 = thrust_y;  // Lateral
         current_t.t2 = thrust_z;  // Vertical
@@ -784,6 +803,15 @@ void BLUEROV2_DOB::solve(){
                  thrust_x, thrust_y, thrust_z);
         ROS_INFO("Position errors: x=%.3f, y=%.3f, z=%.3f", pos_error_x, pos_error_y, pos_error_z);
         ROS_INFO("Velocity errors: x=%.3f, y=%.3f, z=%.3f", vel_error_x, vel_error_y, vel_error_z);
+        
+        // Additional safety check - if errors are too large, reduce thrust further
+        double total_error = sqrt(pos_error_x*pos_error_x + pos_error_y*pos_error_y + pos_error_z*pos_error_z);
+        if (total_error > 10.0) {
+            ROS_WARN("Large position error (%.3f), reducing thrust for safety", total_error);
+            current_t.t0 *= 0.5;
+            current_t.t1 *= 0.5;
+            current_t.t2 *= 0.5;
+        }
     }
     
     ROS_INFO("Applied thrust values: t0=%.6f, t1=%.6f, t2=%.6f, t3=%.6f, t4=%.6f, t5=%.6f", 
@@ -1697,51 +1725,50 @@ void BLUEROV2_DOB::generate_straight_line_trajectory() {
     
     // Calculate target position (move forward along x-axis)
     double target_x = current_x + 20.0;  // Move 20 meters forward
-    double target_y = 0.0;               // Stay on x-axis (straight line)
-    double target_z = target_depth;       // Maintain target depth
-    double target_psi = 0.0;             // Keep heading straight
+    double target_y = current_y;         // Stay at current y position (straight line)
+    double target_z = current_z;         // Maintain current depth
+    double target_psi = current_psi;     // Keep current heading
+    
+    // Check if target distance is reasonable
+    double distance = sqrt(pow(target_x - current_x, 2) + pow(target_y - current_y, 2) + pow(target_z - current_z, 2));
+    if (distance > 20.0) {
+        ROS_WARN("Target distance %.3f is too large, limiting to 20m", distance);
+        double scale_factor = 20.0 / distance;
+        target_x = current_x + (target_x - current_x) * scale_factor;
+        target_y = current_y + (target_y - current_y) * scale_factor;
+        target_z = current_z + (target_z - current_z) * scale_factor;
+    }
     
     ROS_INFO("Generating straight line trajectory: (%.2f,%.2f,%.2f) -> (%.2f,%.2f,%.2f)", 
              current_x, current_y, current_z, target_x, target_y, target_z);
     
-    // Generate trajectory points with smooth interpolation
-    for (int i = 0; i <= BLUEROV2_N; i++) {
+    // Update the reference trajectory for MPC
+    // This will be used in the next solve() call
+    for (unsigned int i = 0; i <= BLUEROV2_N; i++) {
         double progress = (double)i / BLUEROV2_N;
         
-        // Use smooth interpolation for better trajectory
-        double smooth_progress = 1.0 / (1.0 + exp(-8.0 * (progress - 0.5)));
+        // Linear interpolation for straight line
+        acados_in.yref[i][0] = current_x + (target_x - current_x) * progress;  // x
+        acados_in.yref[i][1] = current_y + (target_y - current_y) * progress;  // y
+        acados_in.yref[i][2] = current_z + (target_z - current_z) * progress;  // z
         
-        // Interpolate position
-        acados_in.yref[i][0] = current_x + (target_x - current_x) * smooth_progress;  // x
-        acados_in.yref[i][1] = current_y + (target_y - current_y) * smooth_progress;  // y
-        acados_in.yref[i][2] = current_z + (target_z - current_z) * smooth_progress;  // z
+        // Keep orientation constant
+        acados_in.yref[i][3] = 0.0;  // phi
+        acados_in.yref[i][4] = 0.0;  // theta
+        acados_in.yref[i][5] = current_psi;  // psi
         
-        // Interpolate orientation
-        double psi_diff = target_psi - current_psi;
-        // Normalize angle difference
-        while (psi_diff > M_PI) psi_diff -= 2 * M_PI;
-        while (psi_diff < -M_PI) psi_diff += 2 * M_PI;
+        // Set velocities to zero for now
+        for (int j = 6; j < 12; j++) {
+            acados_in.yref[i][j] = 0.0;
+        }
         
-        acados_in.yref[i][3] = 0.0;  // roll - keep level
-        acados_in.yref[i][4] = 0.0;  // pitch - keep level
-        acados_in.yref[i][5] = current_psi + psi_diff * smooth_progress;  // yaw
-        
-        // Set velocities for smooth motion
-        double velocity_x = (target_x - current_x) / 20.0;  // Average velocity
-        acados_in.yref[i][6] = velocity_x;   // u - forward velocity
-        acados_in.yref[i][7] = 0.0;          // v - no lateral velocity
-        acados_in.yref[i][8] = 0.0;          // w - no vertical velocity
-        acados_in.yref[i][9] = 0.0;          // p - no roll rate
-        acados_in.yref[i][10] = 0.0;         // q - no pitch rate
-        acados_in.yref[i][11] = 0.0;         // r - no yaw rate
-        
-        // Set disturbance estimates to zero
+        // Set disturbances to zero
         for (int j = 12; j < 18; j++) {
             acados_in.yref[i][j] = 0.0;
         }
     }
     
-    ROS_INFO("Straight line trajectory generated successfully");
+    ROS_INFO("Straight line trajectory generated and applied to MPC reference");
 }
 
 // Sensor fusion functions
